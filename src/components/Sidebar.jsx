@@ -1,7 +1,7 @@
 import React from "react";
 import {
   Search,
-  Box,
+  LayoutDashboardIcon,
   UserPlus,
   Users,
   ShoppingCart,
@@ -9,9 +9,17 @@ import {
   Truck,
   Calculator,
   MoreVertical,
+  Package,
 } from "lucide-react";
 
-const Sidebar = () => {
+const Sidebar = ({ currentPage, setCurrentPage }) => {
+  // Mock user data - set image to null to test initials
+  const user = {
+    name: "Robert Simmons",
+    role: "Administrator",
+    image: null, // Change this to a URL string (e.g., "https://via.placeholder.com/40") to show the picture
+  };
+
   const menuSections = [
     {
       title: "ACCOUNTS",
@@ -33,15 +41,52 @@ const Sidebar = () => {
       items: [
         { icon: <Calculator size={20} />, label: "Record Sales" },
         { icon: <Tag size={20} />, label: "Outbound Pricing" },
+        { icon: <Truck size={20} />, label: "Outbound Delivery" },
       ],
     },
   ];
 
+  // Helper to extract initials (e.g., "Robert Simmons" -> "RS")
+  const getInitials = (name) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  // Helper component for navigation items
+  const NavItem = ({ icon, label }) => {
+    const isActive = currentPage === label;
+    return (
+      <div
+        onClick={() => setCurrentPage(label)}
+        className={`flex items-center space-x-3 p-3 mb-1 cursor-pointer transition-all duration-200 rounded-xl group 
+          ${
+            isActive
+              ? "bg-teal-500/40 text-teal-900 shadow-sm"
+              : "hover:bg-teal-50 text-slate-600"
+          }`}
+      >
+        <span className={`${isActive ? "text-teal-900" : "text-teal-800"}`}>
+          {icon}
+        </span>
+        <span
+          className={`font-bold text-[15px] ${isActive ? "text-teal-900" : ""}`}
+        >
+          {label}
+        </span>
+      </div>
+    );
+  };
+
   return (
-    <div className="flex flex-col h-screen w-64 bg-white border-r border-gray-200 font-sans text-slate-800">
-      {/* Logo Section */}
-      <div className="p-6">
-        <h1 className="text-3xl font-bold text-teal-800 tracking-tight">STN</h1>
+    <div className="flex flex-col h-screen w-72 bg-white border-r border-gray-100 font-sans text-slate-700 shadow-sm sticky top-0">
+      <div className="p-8">
+        <h1 className="text-3xl font-bold text-slate-400 tracking-widest text-center">
+          STN
+        </h1>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4">
@@ -53,59 +98,50 @@ const Sidebar = () => {
           <input
             type="text"
             placeholder="Search"
-            className="w-full pl-10 pr-4 py-2 border border-teal-600 rounded-md focus:outline-none focus:ring-1 focus:ring-teal-500 placeholder-gray-400"
+            className="w-full pl-10 pr-4 py-2 border border-teal-500/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 text-sm"
           />
         </div>
 
-        {/* Inventory Item */}
-        <div className="flex items-center space-x-3 p-2 mb-4 cursor-pointer hover:bg-gray-100 rounded-md">
-          <div className="bg-teal-800 p-1 rounded text-white">
-            <Box size={20} />
-          </div>
-          <span className="font-semibold">Inventory</span>
-        </div>
+        {/* Static Items */}
+        <NavItem icon={<LayoutDashboardIcon size={20} />} label="Dashboard" />
+        <NavItem icon={<Package size={20} />} label="Inventory" />
 
         {/* Dynamic Sections */}
         {menuSections.map((section, idx) => (
           <div key={idx} className="mb-6 border-t border-gray-100 pt-4">
-            <h3 className="text-xs font-semibold text-gray-400 tracking-widest mb-4 ml-2">
+            <h3 className="text-[11px] font-bold text-gray-400 tracking-[0.2em] mb-4 ml-3 uppercase">
               {section.title}
             </h3>
             {section.items.map((item, itemIdx) => (
-              <div
-                key={itemIdx}
-                className="flex items-center space-x-3 p-2 mb-1 cursor-pointer hover:bg-gray-50 rounded-md group"
-              >
-                <span className="text-teal-700 group-hover:text-teal-900">
-                  {item.icon}
-                </span>
-                <span className="font-medium">{item.label}</span>
-              </div>
+              <NavItem key={itemIdx} icon={item.icon} label={item.label} />
             ))}
           </div>
         ))}
       </div>
 
-      {/* User Profile Section */}
-      <div className="bg-teal-600/80 p-4 text-white">
-        <div className="flex items-center justify-between mb-4">
-          <span className="font-medium">Robert Simmons</span>
-          <MoreVertical size={16} />
-        </div>
+      {/* User Profile */}
+      <div className="p-4 border-t border-gray-100">
+        <div className="flex items-center space-x-3 p-2 rounded-xl">
+          {/* Conditional Rendering: Image or Initials */}
+          {user.image ? (
+            <img
+              src={user.image}
+              alt="Profile"
+              className="w-10 h-10 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-sm">
+              {getInitials(user.name)}
+            </div>
+          )}
 
-        <div className="flex items-center space-x-3 bg-teal-700/30 p-2 rounded-lg">
-          <img
-            src="https://via.placeholder.com/40"
-            alt="Profile"
-            className="w-12 h-12 rounded-full border-2 border-white/50"
-          />
           <div className="flex-1">
-            <p className="text-sm font-semibold leading-tight">
-              Robert Simmons
+            <p className="text-sm font-bold leading-tight text-slate-800">
+              {user.name}
             </p>
-            <p className="text-xs text-teal-100">Administrator</p>
+            <p className="text-xs text-slate-400">{user.role}</p>
           </div>
-          <MoreVertical size={16} className="text-teal-100" />
+          <MoreVertical size={16} className="text-gray-400" />
         </div>
       </div>
     </div>
