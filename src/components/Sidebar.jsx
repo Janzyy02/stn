@@ -10,14 +10,14 @@ import {
   Calculator,
   MoreVertical,
   Package,
+  History, // Added for the new page
 } from "lucide-react";
 
 const Sidebar = ({ currentPage, setCurrentPage }) => {
-  // Mock user data - set image to null to test initials
   const user = {
     name: "Robert Simmons",
     role: "Administrator",
-    image: null, // Change this to a URL string (e.g., "https://via.placeholder.com/40") to show the picture
+    image: null,
   };
 
   const menuSections = [
@@ -29,24 +29,27 @@ const Sidebar = ({ currentPage, setCurrentPage }) => {
       ],
     },
     {
+      title: "PRICING",
+      items: [{ icon: <Tag size={20} />, label: "Edit Pricing" }],
+    },
+    {
       title: "INBOUND",
       items: [
         { icon: <ShoppingCart size={20} />, label: "Purchasing" },
-        { icon: <Tag size={20} />, label: "Inbound Pricing" },
+        { icon: <History size={20} />, label: "Purchase History" },
         { icon: <Truck size={20} />, label: "Inbound Delivery" },
       ],
     },
     {
       title: "OUTBOUND",
       items: [
-        { icon: <Calculator size={20} />, label: "Record Sales" },
-        { icon: <Tag size={20} />, label: "Outbound Pricing" },
+        { icon: <Calculator size={20} />, label: "Point of Sales" },
+        { icon: <History size={20} />, label: "Invoice History" },
         { icon: <Truck size={20} />, label: "Outbound Delivery" },
       ],
     },
   ];
 
-  // Helper to extract initials (e.g., "Robert Simmons" -> "RS")
   const getInitials = (name) => {
     return name
       .split(" ")
@@ -56,7 +59,6 @@ const Sidebar = ({ currentPage, setCurrentPage }) => {
       .slice(0, 2);
   };
 
-  // Helper component for navigation items
   const NavItem = ({ icon, label }) => {
     const isActive = currentPage === label;
     return (
@@ -88,9 +90,7 @@ const Sidebar = ({ currentPage, setCurrentPage }) => {
           STN
         </h1>
       </div>
-
       <div className="flex-1 overflow-y-auto px-4">
-        {/* Search Bar */}
         <div className="relative mb-6">
           <span className="absolute inset-y-0 left-3 flex items-center text-teal-600">
             <Search size={18} />
@@ -101,12 +101,8 @@ const Sidebar = ({ currentPage, setCurrentPage }) => {
             className="w-full pl-10 pr-4 py-2 border border-teal-500/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/20 text-sm"
           />
         </div>
-
-        {/* Static Items */}
         <NavItem icon={<LayoutDashboardIcon size={20} />} label="Dashboard" />
         <NavItem icon={<Package size={20} />} label="Inventory" />
-
-        {/* Dynamic Sections */}
         {menuSections.map((section, idx) => (
           <div key={idx} className="mb-6 border-t border-gray-100 pt-4">
             <h3 className="text-[11px] font-bold text-gray-400 tracking-[0.2em] mb-4 ml-3 uppercase">
@@ -118,23 +114,19 @@ const Sidebar = ({ currentPage, setCurrentPage }) => {
           </div>
         ))}
       </div>
-
-      {/* User Profile */}
       <div className="p-4 border-t border-gray-100">
         <div className="flex items-center space-x-3 p-2 rounded-xl">
-          {/* Conditional Rendering: Image or Initials */}
-          {user.image ? (
+          {!user.image ? (
+            <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-sm">
+              {getInitials(user.name)}
+            </div>
+          ) : (
             <img
               src={user.image}
               alt="Profile"
               className="w-10 h-10 rounded-full object-cover"
             />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-sm">
-              {getInitials(user.name)}
-            </div>
           )}
-
           <div className="flex-1">
             <p className="text-sm font-bold leading-tight text-slate-800">
               {user.name}

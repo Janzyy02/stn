@@ -2,33 +2,27 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import {
   Package,
-  Layers,
-  AlertTriangle,
-  Filter,
   Download,
   MoreHorizontal,
   Loader2,
+  CheckCircle2,
   Calendar,
+  Search,
+  RefreshCcw,
 } from "lucide-react";
 
 const Inventory = () => {
   const [inventoryItems, setInventoryItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
 
-  // Helper functions for date shortcuts
-  const getToday = () => new Date().toISOString().split("T")[0];
-  const getFirstOfMonth = () => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1)
-      .toISOString()
-      .split("T")[0];
-  };
+  // Initialize with today's date
+  const getTodayStr = () => new Date().toISOString().split("T")[0];
 
-  // State for date filtering - defaults to current month
   const [dateRange, setDateRange] = useState({
-    start: getFirstOfMonth(),
-    end: getToday(),
+    start: getTodayStr(),
+    end: getTodayStr(),
   });
 
   useEffect(() => {
@@ -40,18 +34,23 @@ const Inventory = () => {
       setLoading(true);
       setError(null);
 
-      // If start and end are same, it effectively queries a single day
-      const startTime = `${dateRange.start}T00:00:00`;
-      const endTime = `${dateRange.end}T23:59:59`;
-
-      let { data, error } = await supabase
+      // Join hardware_inventory with product_pricing using product_id
+      let { data, error: fetchError } = await supabase
         .from("hardware_inventory")
-        .select("*")
-        .gte("last_updated", startTime)
-        .lte("last_updated", endTime)
+        .select(
+          `
+          *,
+          product_pricing!product_id (
+            supplier_cost,
+            manual_retail_price
+          )
+        `
+        )
+        .gte("last_updated", `${dateRange.start}T00:00:00Z`)
+        .lte("last_updated", `${dateRange.end}T23:59:59Z`)
         .order("name", { ascending: true });
 
-      if (error) throw error;
+      if (fetchError) throw fetchError;
       setInventoryItems(data || []);
     } catch (err) {
       setError(err.message);
@@ -60,10 +59,70 @@ const Inventory = () => {
     }
   };
 
-  // Date Shortcut Handlers
-  const setSingleDate = (date) => setDateRange({ start: date, end: date });
-  const setMonthRange = () =>
-    setDateRange({ start: getFirstOfMonth(), end: getToday() });
+  const setFilterToToday = () => {
+    const today = getTodayStr();
+    setDateRange({ start: today, end: today });
+  };
+
+  const handleEndDay = async () => {
+    const confirmEnd = window.confirm(
+      "End Business Day? This will archive current totals and reset daily movement counts."
+    );
+
+    if (!confirmEnd) return;
+
+    try {
+      setIsProcessing(true);
+
+      const historyData = inventoryItems.map((item) => {
+        const unitPrice =
+          item.product_pricing?.manual_retail_price ||
+          item.product_pricing?.supplier_cost ||
+          0;
+
+        return {
+          sku: item.sku,
+          name: item.name,
+          category: item.category,
+          initial_qty: item.quantity,
+          inbound_qty: item.inbound_qty,
+          outbound_qty: item.outbound_qty,
+          final_balance: item.stock_balance,
+          total_value: unitPrice * item.stock_balance,
+          snapshot_date: new Date().toISOString().split("T")[0],
+        };
+      });
+
+      const { error: historyError } = await supabase
+        .from("daily_ledger_history")
+        .insert(historyData);
+
+      if (historyError) throw historyError;
+
+      const updatePromises = inventoryItems.map((item) =>
+        supabase
+          .from("hardware_inventory")
+          .update({
+            quantity: item.quantity + item.stock_balance,
+            inbound_qty: 0,
+            outbound_qty: 0,
+            last_updated: new Date().toISOString(),
+          })
+          .eq("id", item.id)
+      );
+
+      const results = await Promise.all(updatePromises);
+      const firstError = results.find((r) => r.error);
+      if (firstError) throw firstError.error;
+
+      alert("Business day closed successfully!");
+      fetchInventory();
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const getStatus = (balance, minLevel) => {
     if (balance <= 0) return "Out of Stock";
@@ -73,6 +132,7 @@ const Inventory = () => {
 
   const exportToCSV = () => {
     if (inventoryItems.length === 0) return;
+    // Price column removed from CSV headers
     const headers = [
       "SKU",
       "Product",
@@ -81,7 +141,6 @@ const Inventory = () => {
       "In",
       "Out",
       "Balance",
-      "Price",
       "Status",
     ];
     const rows = inventoryItems.map((item) => [
@@ -92,7 +151,6 @@ const Inventory = () => {
       item.inbound_qty,
       item.outbound_qty,
       item.stock_balance,
-      item.price,
       getStatus(item.stock_balance, item.min_stock_level),
     ]);
     const csvContent = [
@@ -102,11 +160,8 @@ const Inventory = () => {
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `Ledger_${dateRange.start}_to_${dateRange.end}.csv`
-    );
+    link.href = url;
+    link.setAttribute("download", `Inventory_Report_${dateRange.start}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -114,147 +169,115 @@ const Inventory = () => {
 
   return (
     <div className="p-8 w-full bg-slate-50 min-h-screen font-sans text-slate-900">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">
             Inventory Management
           </h1>
-          <p className="text-slate-500 text-sm">
-            Hardware Store Stock Ledger (PHP)
-          </p>
+          <p className="text-slate-500 text-sm">Real-time Stock Ledger</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Quick Shortcuts */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setSingleDate(getToday())}
-              className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition-all shadow-sm active:scale-95"
-            >
-              Today
-            </button>
-            <button
-              onClick={setMonthRange}
-              className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition-all shadow-sm active:scale-95"
-            >
-              This Month
-            </button>
-          </div>
-
-          {/* Date Picker Range/Single */}
-          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-sm">
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase text-slate-400 font-bold">
-                From
-              </span>
+        <div className="flex flex-wrap items-center gap-4 w-full xl:w-auto">
+          <div className="flex items-center gap-3 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm grow md:grow-0">
+            <div className="flex items-center gap-2 px-3 border-r border-slate-100">
+              <Calendar size={16} className="text-teal-600" />
+              <button
+                onClick={setFilterToToday}
+                className="text-[10px] font-bold uppercase tracking-wider text-teal-600 hover:text-teal-700 transition-colors"
+              >
+                Today
+              </button>
+            </div>
+            <div className="flex items-center gap-2 pr-3">
               <input
                 type="date"
                 value={dateRange.start}
                 onChange={(e) =>
                   setDateRange({ ...dateRange, start: e.target.value })
                 }
-                className="text-xs font-bold outline-none cursor-pointer text-slate-800"
+                className="text-xs font-semibold text-slate-600 bg-transparent outline-none cursor-pointer hover:text-teal-600 transition-colors"
               />
-            </div>
-            <div className="h-8 w-px bg-slate-100 mx-2" />
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase text-slate-400 font-bold">
-                To
-              </span>
+              <span className="text-slate-300">—</span>
               <input
                 type="date"
                 value={dateRange.end}
                 onChange={(e) =>
                   setDateRange({ ...dateRange, end: e.target.value })
                 }
-                className="text-xs font-bold outline-none cursor-pointer text-slate-800"
+                className="text-xs font-semibold text-slate-600 bg-transparent outline-none cursor-pointer hover:text-teal-600 transition-colors"
               />
             </div>
-            <Calendar size={16} className="text-teal-600 ml-2" />
+            <button
+              onClick={fetchInventory}
+              className="p-2 hover:bg-slate-50 rounded-lg text-slate-400 transition-colors"
+            >
+              <RefreshCcw size={14} className={loading ? "animate-spin" : ""} />
+            </button>
           </div>
 
-          <button
-            onClick={exportToCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 transition-colors"
-          >
-            <Download size={16} /> Export CSV
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleEndDay}
+              disabled={isProcessing}
+              className="flex items-center gap-2 px-6 py-2 bg-slate-800 text-white rounded-lg text-sm font-semibold hover:bg-slate-900 transition-all shadow-md disabled:opacity-50"
+            >
+              {isProcessing ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <CheckCircle2 size={16} />
+              )}
+              End Business Day
+            </button>
+
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-6 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 transition-all shadow-sm"
+            >
+              <Download size={16} /> Export
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <StatCard
-          title="Total Stock Value"
-          value={`₱${inventoryItems
-            .reduce((acc, item) => acc + item.price * item.stock_balance, 0)
-            .toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-          icon={<Package className="text-teal-600" />}
-          trend="Current View"
-          up={true}
-        />
-        <StatCard
-          title="Unique Categories"
-          value={[...new Set(inventoryItems.map((i) => i.category))].length}
-          icon={<Layers className="text-blue-600" />}
-          trend="Active"
-          up={true}
-        />
-        <StatCard
-          title="Low Stock Alerts"
-          value={
-            inventoryItems.filter((i) => i.stock_balance <= i.min_stock_level)
-              .length
-          }
-          icon={<AlertTriangle className="text-orange-600" />}
-          trend="Action Needed"
-          up={false}
-        />
-      </div>
-
-      {/* Main Ledger Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-          <h2 className="font-bold text-slate-800">Stock Activity Ledger</h2>
-          {loading && (
-            <Loader2 className="animate-spin text-teal-600" size={20} />
-          )}
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white/50 backdrop-blur-sm sticky top-0 z-10">
+          <h2 className="font-bold text-slate-800">Movement Ledger</h2>
+          <div className="relative group">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300"
+            />
+            <input
+              type="text"
+              placeholder="Search items..."
+              className="pl-9 pr-4 py-2 bg-slate-50 border-none rounded-lg text-xs outline-none w-48 md:w-64"
+            />
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           {error ? (
-            <div className="p-10 text-center text-red-500 font-medium bg-red-50">
-              Error: {error}
+            <div className="p-10 text-center text-red-500 bg-red-50">
+              {error}
             </div>
           ) : (
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/50 text-slate-400 text-[10px] uppercase tracking-widest font-bold">
-                  <th className="px-6 py-4">Product / SKU</th>
+                  <th className="px-6 py-4">Product Details</th>
                   <th className="px-6 py-4">Category</th>
                   <th className="px-6 py-4">Initial</th>
                   <th className="px-6 py-4 text-blue-600">In (+)</th>
                   <th className="px-6 py-4 text-orange-600">Out (-)</th>
-                  <th className="px-6 py-4 bg-teal-50/30 text-teal-700 font-extrabold">
+                  <th className="px-6 py-4 bg-teal-50/30 text-teal-700">
                     Balance
                   </th>
+                  {/* Price column header removed */}
                   <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Price</th>
                   <th className="px-6 py-4"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {inventoryItems.length === 0 && !loading && (
-                  <tr>
-                    <td
-                      colSpan="9"
-                      className="px-6 py-10 text-center text-slate-400 italic font-medium"
-                    >
-                      No stock activity found for selected date(s).
-                    </td>
-                  </tr>
-                )}
                 {inventoryItems.map((item) => (
                   <tr
                     key={item.id}
@@ -283,6 +306,7 @@ const Inventory = () => {
                     <td className="px-6 py-4 text-sm font-black text-slate-900 bg-teal-50/20">
                       {item.stock_balance}
                     </td>
+                    {/* Price table data cell removed */}
                     <td className="px-6 py-4">
                       <StatusBadge
                         status={getStatus(
@@ -291,14 +315,8 @@ const Inventory = () => {
                         )}
                       />
                     </td>
-                    <td className="px-6 py-4 text-sm font-bold text-slate-800">
-                      ₱
-                      {parseFloat(item.price).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                      })}
-                    </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="text-slate-400 hover:text-slate-600 transition-colors">
+                      <button className="text-slate-400 hover:text-slate-600 p-1">
                         <MoreHorizontal size={18} />
                       </button>
                     </td>
@@ -312,23 +330,6 @@ const Inventory = () => {
     </div>
   );
 };
-
-const StatCard = ({ title, value, icon, trend, up }) => (
-  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-    <div className="flex justify-between items-start mb-4">
-      <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
-      <span
-        className={`text-xs font-bold ${
-          up ? "text-green-600" : "text-red-500"
-        }`}
-      >
-        {trend}
-      </span>
-    </div>
-    <h3 className="text-slate-400 text-sm font-medium mb-1">{title}</h3>
-    <p className="text-2xl font-bold text-slate-800">{value}</p>
-  </div>
-);
 
 const StatusBadge = ({ status }) => {
   const styles = {
