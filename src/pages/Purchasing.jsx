@@ -53,7 +53,6 @@ const Purchasing = () => {
     email: "",
   });
 
-  // Unique PO number logic
   const poDetails = useMemo(
     () => ({
       number: `PO-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -66,14 +65,14 @@ const Purchasing = () => {
     [view]
   );
 
-  // --- DATA FETCHING ---
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Referring to columns shown in your table image: inbound_qty, stock_balance, total_stock
       const { data: invData, error: invError } = await supabase
         .from("hardware_inventory")
         .select(
-          `id, name, sku, category, supplier, unit, stock_balance, inbound_qty, product_pricing (supplier_cost)`
+          `id, name, sku, category, supplier, unit, stock_balance, inbound_qty, total_stock, product_pricing (supplier_cost)`
         )
         .order("name");
 
@@ -101,7 +100,6 @@ const Purchasing = () => {
     fetchData();
   }, []);
 
-  // --- HANDLERS ---
   const handleAddItem = async (e) => {
     e.preventDefault();
     setSubmittingItem(true);
@@ -115,8 +113,9 @@ const Purchasing = () => {
             unit: newItem.unit,
             category: newItem.category,
             supplier: newItem.supplier,
-            stock_balance: 0,
             inbound_qty: 0,
+            outbound_qty: 0,
+            quantity: 0,
           },
         ])
         .select()
@@ -193,7 +192,7 @@ const Purchasing = () => {
   const removeFromCart = (id) =>
     setCart((prev) => prev.filter((i) => i.id !== id));
 
-  // --- TRANSACTION HANDLER: INCREMENTS INBOUND_QTY & STOCK_BALANCE ---
+  // --- UPDATED TRANSACTION HANDLER ---
   const handleCompleteTransaction = async () => {
     if (cart.length === 0) return;
     setIsCompleting(true);
@@ -218,40 +217,27 @@ const Purchasing = () => {
         price_per_unit: item.price,
         total_price: item.price * item.quantity,
       }));
-
       const { error: itemsError } = await supabase
         .from("purchase_order_items")
         .insert(poItems);
-
       if (itemsError) throw itemsError;
 
-      // 3. Increment stock_balance and Inbound_Qty in hardware_inventory
+      // 3. Update Inventory using RPC call
       const updatePromises = cart.map(async (item) => {
-        const { data: currentItem, error: fetchError } = await supabase
-          .from("hardware_inventory")
-          .select("stock_balance, inbound_qty")
-          .eq("id", item.id)
-          .single();
-
-        if (fetchError) throw fetchError;
-
-        const currentStock = currentItem.stock_balance || 0;
-        const currentInbound = currentItem.inbound_qty || 0;
-
-        const { error: updateError } = await supabase
-          .from("hardware_inventory")
-          .update({
-            stock_balance: currentStock + item.quantity, // Revised to use stock_balance
-            inbound_qty: currentInbound + item.quantity,
-          })
-          .eq("id", item.id);
+        const { error: updateError } = await supabase.rpc(
+          "increment_inventory_inbound",
+          {
+            row_id: item.id, // Must match SQL parameter name exactly
+            add_amount: item.quantity,
+          }
+        );
 
         if (updateError) throw updateError;
       });
 
       await Promise.all(updatePromises);
 
-      alert("PO Recorded and Stock Balance Updated Successfully!");
+      alert("PO Recorded and Stock Updated Successfully!");
       setCart([]);
       setView("browse");
       fetchData();
@@ -277,7 +263,6 @@ const Purchasing = () => {
     0
   );
 
-  // --- RENDER VIEWS ---
   if (view === "checkout") {
     const sInfo = suppliers.find((s) => s.name === cart[0]?.supplier);
     return (
@@ -289,7 +274,6 @@ const Purchasing = () => {
           >
             <ChevronLeft size={20} /> Back to Browse
           </button>
-
           <div className="bg-white p-10 rounded-xl shadow-xl border border-slate-200">
             <div className="flex justify-between items-start border-b-4 border-black pb-8 mb-8">
               <div>
@@ -307,7 +291,6 @@ const Purchasing = () => {
                 <p className="font-bold">{poDetails.date}</p>
               </div>
             </div>
-
             <div className="grid grid-cols-2 gap-12 mb-12">
               <div>
                 <h3 className="text-[10px] font-black uppercase text-slate-400 mb-2">
@@ -322,7 +305,6 @@ const Purchasing = () => {
                 <p className="text-sm text-slate-600">{sInfo?.contact}</p>
               </div>
             </div>
-
             <table className="w-full mb-12">
               <thead>
                 <tr className="border-b-2 border-black text-[10px] uppercase font-black text-slate-400">
@@ -356,9 +338,8 @@ const Purchasing = () => {
                 ))}
               </tbody>
             </table>
-
-            <div className="flex justify-end border-t-4 border-black pt-6">
-              <div className="text-right">
+            <div className="flex justify-end border-t-4 border-black pt-6 text-right">
+              <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase">
                   Total Amount Due
                 </p>
@@ -368,7 +349,6 @@ const Purchasing = () => {
               </div>
             </div>
           </div>
-
           <div className="flex justify-center gap-4 mt-8">
             <button
               onClick={() => window.print()}
@@ -385,7 +365,7 @@ const Purchasing = () => {
                 <Loader2 className="animate-spin" />
               ) : (
                 <CheckCircle size={20} />
-              )}
+              )}{" "}
               Confirm & Record
             </button>
           </div>
@@ -396,6 +376,7 @@ const Purchasing = () => {
 
   return (
     <div className="p-8 bg-[#e5e7eb] min-h-screen text-black">
+      {/* ... (Existing browse view JSX) ... */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-4xl font-black uppercase">Purchase Order</h1>
         <button
@@ -419,7 +400,7 @@ const Purchasing = () => {
           <div className="relative">
             <input
               type="text"
-              className="w-full p-2 pl-10 border rounded-lg h-11 text-black bg-white"
+              className="w-full p-2 pl-10 border rounded-lg h-11 bg-white"
               placeholder="SKU or Name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -435,7 +416,7 @@ const Purchasing = () => {
             Filter Supplier
           </label>
           <select
-            className="w-full p-2 border rounded-lg h-11 text-black bg-white font-bold"
+            className="w-full p-2 border rounded-lg h-11 bg-white font-bold"
             value={filterSupplier}
             onChange={(e) => setFilterSupplier(e.target.value)}
           >
@@ -528,7 +509,6 @@ const Purchasing = () => {
             </button>
           </form>
         </div>
-
         <div className="bg-white rounded-xl p-6 border shadow-sm">
           <h2 className="text-xl font-black mb-4 uppercase">
             <UserPlus className="inline mr-2" /> Register Supplier
@@ -714,9 +694,11 @@ const ItemCard = ({ item, onAdd }) => {
             / {item.unit || "pcs"}
           </span>
         </div>
-        {/* Display Current Stock Balance */}
         <p className="text-[10px] font-bold text-slate-500 mt-1">
-          Current Stock: {item.stock_balance || 0}
+          Inbound (Today): {item.inbound_qty || 0}
+        </p>
+        <p className="text-[10px] font-bold text-slate-400">
+          Total Stock (Master): {item.total_stock || 0}
         </p>
       </div>
       <div className="flex justify-between items-center pt-4 border-t-2 border-slate-50">
