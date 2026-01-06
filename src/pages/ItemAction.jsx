@@ -1,28 +1,44 @@
 import React, { useEffect, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
-import { ShoppingCart, ArrowLeft, Loader2, PackageCheck } from "lucide-react";
+import {
+  ShoppingCart,
+  ArrowLeft,
+  Loader2,
+  PackageCheck,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react";
 
-const ItemAction = () => {
-  const [searchParams] = useSearchParams();
-  const sku = searchParams.get("sku");
-  const navigate = useNavigate();
-
+const ItemAction = ({ sku, setCurrentPage }) => {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [status, setStatus] = useState(null); // 'success' | 'error'
 
   useEffect(() => {
     const fetchItem = async () => {
-      const { data } = await supabase
-        .from("hardware_inventory")
-        .select("*")
-        .eq("sku", sku)
-        .single();
-      setItem(data);
-      setLoading(false);
+      if (!sku) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("hardware_inventory")
+          .select("*")
+          .eq("sku", sku)
+          .single();
+
+        if (error) throw error;
+        setItem(data);
+      } catch (err) {
+        console.error("Error fetching item:", err.message);
+      } finally {
+        setLoading(false);
+      }
     };
-    if (sku) fetchItem();
+
+    fetchItem();
   }, [sku]);
 
   const handleTransaction = async (type) => {
@@ -30,48 +46,91 @@ const ItemAction = () => {
     const column = type === "out" ? "outbound_qty" : "inbound_qty";
     const currentValue = item[column] || 0;
 
-    const { error } = await supabase
-      .from("hardware_inventory")
-      .update({ [column]: currentValue + 1 })
-      .eq("sku", sku);
+    try {
+      const { error } = await supabase
+        .from("hardware_inventory")
+        .update({ [column]: currentValue + 1 })
+        .eq("sku", sku);
 
-    if (error) alert("Error updating inventory");
-    else navigate("/inventory"); // Go back to the main ledger
+      if (error) throw error;
+
+      setStatus("success");
+      // Auto-redirect back to inventory after 1.5 seconds on success
+      setTimeout(() => {
+        setCurrentPage("Inventory");
+      }, 1500);
+    } catch (err) {
+      alert("Error updating inventory: " + err.message);
+      setProcessing(false);
+    }
   };
 
-  if (loading)
+  if (loading) {
     return (
-      <div className="p-20 text-center">
-        <Loader2 className="animate-spin mx-auto" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="animate-spin text-blue-600" size={40} />
       </div>
     );
-  if (!item) return <div className="p-20 text-center">Item not found.</div>;
+  }
+
+  if (!sku || !item) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+        <AlertCircle size={60} className="text-red-500 mb-4" />
+        <h2 className="text-2xl font-black text-slate-800 uppercase">
+          Item Not Found
+        </h2>
+        <p className="text-slate-500 mb-6">
+          The SKU provided is invalid or does not exist in the database.
+        </p>
+        <button
+          onClick={() => setCurrentPage("Inventory")}
+          className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold uppercase tracking-widest"
+        >
+          Return to Ledger
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-200">
+      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-200 relative overflow-hidden">
+        {/* Success Overlay */}
+        {status === "success" && (
+          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center animate-in fade-in duration-300">
+            <CheckCircle size={80} className="text-emerald-500 mb-4" />
+            <h2 className="text-2xl font-black text-slate-800 uppercase">
+              Success!
+            </h2>
+            <p className="text-slate-500 font-bold">Inventory Updated.</p>
+          </div>
+        )}
+
         <button
-          onClick={() => navigate(-1)}
-          className="text-slate-400 flex items-center gap-2 mb-6"
+          onClick={() => setCurrentPage("Inventory")}
+          className="text-slate-400 hover:text-slate-600 flex items-center gap-2 mb-8 font-bold text-sm transition-colors"
         >
-          <ArrowLeft size={16} /> Back
+          <ArrowLeft size={16} /> Back to Ledger
         </button>
 
-        <div className="text-center mb-8">
-          <div className="bg-blue-100 text-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <ShoppingCart size={32} />
+        <div className="text-center mb-10">
+          <div className="bg-blue-50 text-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+            <ShoppingCart size={36} />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 uppercase">
+          <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight leading-tight">
             {item.name}
           </h1>
-          <p className="font-mono text-slate-500 font-bold">{item.sku}</p>
+          <p className="font-mono text-blue-600 font-black mt-2 bg-blue-50 px-3 py-1 rounded-full inline-block text-xs">
+            {item.sku}
+          </p>
         </div>
 
         <div className="space-y-4">
           <button
             disabled={processing}
             onClick={() => handleTransaction("out")}
-            className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-3"
+            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-3 shadow-lg active:scale-95 disabled:opacity-50"
           >
             {processing ? (
               <Loader2 className="animate-spin" />
@@ -84,18 +143,31 @@ const ItemAction = () => {
           <button
             disabled={processing}
             onClick={() => handleTransaction("in")}
-            className="w-full bg-white border-2 border-slate-200 text-slate-600 py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-3"
+            className="w-full bg-white border-2 border-slate-200 text-slate-600 py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
           >
             <PackageCheck size={20} />
             Restock Item
           </button>
         </div>
 
-        <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-          <p className="text-xs text-slate-400 font-bold uppercase">
-            Current Stock Level
-          </p>
-          <p className="text-3xl font-black text-slate-900">{item.quantity}</p>
+        <div className="mt-10 pt-8 border-t border-slate-100 flex justify-between items-center">
+          <div>
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+              Master Stock
+            </p>
+            <p className="text-3xl font-black text-slate-900">
+              {item.quantity}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+              Daily Movement
+            </p>
+            <p className="text-sm font-bold text-slate-600">
+              <span className="text-blue-600">+{item.inbound_qty || 0}</span> /{" "}
+              <span className="text-orange-600">-{item.outbound_qty || 0}</span>
+            </p>
+          </div>
         </div>
       </div>
     </div>
