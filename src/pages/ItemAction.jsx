@@ -9,14 +9,13 @@ import {
   CheckCircle,
   Calendar,
   Hash,
-  Tag,
 } from "lucide-react";
 
 const ItemAction = ({ sku, setCurrentPage }) => {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState(null); // 'success' | 'error'
 
   useEffect(() => {
     const fetchItem = async () => {
@@ -26,14 +25,14 @@ const ItemAction = ({ sku, setCurrentPage }) => {
       }
 
       try {
-        // Fetch item details and join with purchase_orders table
-        // We use po_number to link the two tables
+        // We fetch from purchase_order_items and join purchase_orders!inner
+        // to verify the link and get the official created_at date
         const { data, error } = await supabase
           .from("purchase_order_items")
           .select(
             `
             *,
-            purchase_orders (
+            purchase_orders!inner (
               created_at,
               po_number
             )
@@ -45,7 +44,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
         if (error) throw error;
         setItem(data);
       } catch (err) {
-        console.error("Error fetching item:", err.message);
+        console.error("Verification Error:", err.message);
       } finally {
         setLoading(false);
       }
@@ -77,12 +76,13 @@ const ItemAction = ({ sku, setCurrentPage }) => {
     }
   };
 
-  if (loading)
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <Loader2 className="animate-spin text-blue-600" size={40} />
       </div>
     );
+  }
 
   if (!sku || !item) {
     return (
@@ -91,9 +91,10 @@ const ItemAction = ({ sku, setCurrentPage }) => {
         <h2 className="text-2xl font-black text-slate-800 uppercase">
           Item Not Found
         </h2>
+        <p className="text-slate-500 mb-6">SKU: {sku}</p>
         <button
           onClick={() => setCurrentPage("Inventory")}
-          className="mt-6 bg-slate-900 text-white px-8 py-3 rounded-xl font-bold uppercase"
+          className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold uppercase tracking-widest"
         >
           Return to Ledger
         </button>
@@ -116,7 +117,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
 
         <button
           onClick={() => setCurrentPage("Inventory")}
-          className="text-slate-400 hover:text-slate-600 flex items-center gap-2 mb-8 font-bold text-sm"
+          className="text-slate-400 hover:text-slate-600 flex items-center gap-2 mb-8 font-bold text-sm transition-colors"
         >
           <ArrowLeft size={16} /> Back to Ledger
         </button>
@@ -125,40 +126,33 @@ const ItemAction = ({ sku, setCurrentPage }) => {
           <div className="bg-blue-50 text-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-inner">
             <Hash size={36} />
           </div>
-          {/* Using PO Number as the primary display instead of SKU */}
           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight leading-tight">
-            PO #{item.purchase_orders?.po_number || item.po_number}
+            PO #{item.po_number}
           </h1>
           <p className="text-slate-500 font-bold mt-1 text-sm uppercase">
             {item.item_name}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 mb-8">
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Calendar className="text-blue-500" size={20} />
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Order Date
-                </p>
-                <p className="text-sm font-bold text-slate-700">
-                  {item.purchase_orders?.created_at
-                    ? new Date(
-                        item.purchase_orders.created_at
-                      ).toLocaleDateString()
-                    : "N/A"}
-                </p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Item SKU
-              </p>
-              <p className="text-xs font-mono font-bold text-slate-500">
-                {item.sku}
-              </p>
-            </div>
+        {/* Verified Metadata Section */}
+        <div className="grid grid-cols-2 gap-3 mb-8">
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+              Verified PO
+            </p>
+            <p className="text-xs font-bold text-slate-700 truncate">
+              {item.purchase_orders?.po_number || "N/A"}
+            </p>
+          </div>
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
+              Date Purchased
+            </p>
+            <p className="text-xs font-bold text-slate-700">
+              {item.purchase_orders?.created_at
+                ? new Date(item.purchase_orders.created_at).toLocaleDateString()
+                : "N/A"}
+            </p>
           </div>
         </div>
 
@@ -166,7 +160,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
           <button
             disabled={processing}
             onClick={() => handleTransaction("out")}
-            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-3 shadow-lg active:scale-95"
           >
             {processing ? (
               <Loader2 className="animate-spin" />
@@ -179,7 +173,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
           <button
             disabled={processing}
             onClick={() => handleTransaction("in")}
-            className="w-full bg-white border-2 border-slate-200 text-slate-600 py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+            className="w-full bg-white border-2 border-slate-200 text-slate-600 py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-3 active:scale-95"
           >
             <PackageCheck size={20} />
             Restock Item
@@ -189,7 +183,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
         <div className="mt-10 pt-8 border-t border-slate-100 flex justify-between items-center">
           <div>
             <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
-              Physical Stock
+              Master Stock
             </p>
             <p className="text-3xl font-black text-slate-900">
               {item.quantity}
