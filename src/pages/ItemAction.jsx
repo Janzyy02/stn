@@ -7,6 +7,8 @@ import {
   PackageCheck,
   AlertCircle,
   CheckCircle,
+  Calendar,
+  Hash,
 } from "lucide-react";
 
 const ItemAction = ({ sku, setCurrentPage }) => {
@@ -23,8 +25,9 @@ const ItemAction = ({ sku, setCurrentPage }) => {
       }
 
       try {
+        // Updated to fetch from purchase_order_items to get po_number
         const { data, error } = await supabase
-          .from("hardware_inventory")
+          .from("purchase_order_items")
           .select("*")
           .eq("sku", sku)
           .single();
@@ -47,15 +50,15 @@ const ItemAction = ({ sku, setCurrentPage }) => {
     const currentValue = item[column] || 0;
 
     try {
+      // Updates remain focused on the specific item instance
       const { error } = await supabase
-        .from("hardware_inventory")
+        .from("purchase_order_items")
         .update({ [column]: currentValue + 1 })
         .eq("sku", sku);
 
       if (error) throw error;
 
       setStatus("success");
-      // Auto-redirect back to inventory after 1.5 seconds on success
       setTimeout(() => {
         setCurrentPage("Inventory");
       }, 1500);
@@ -96,7 +99,6 @@ const ItemAction = ({ sku, setCurrentPage }) => {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-200 relative overflow-hidden">
-        {/* Success Overlay */}
         {status === "success" && (
           <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center animate-in fade-in duration-300">
             <CheckCircle size={80} className="text-emerald-500 mb-4" />
@@ -114,16 +116,38 @@ const ItemAction = ({ sku, setCurrentPage }) => {
           <ArrowLeft size={16} /> Back to Ledger
         </button>
 
-        <div className="text-center mb-10">
-          <div className="bg-blue-50 text-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+        <div className="text-center mb-6">
+          <div className="bg-blue-50 text-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-inner">
             <ShoppingCart size={36} />
           </div>
           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight leading-tight">
-            {item.name}
+            {item.item_name || item.name}
           </h1>
           <p className="font-mono text-blue-600 font-black mt-2 bg-blue-50 px-3 py-1 rounded-full inline-block text-xs">
             {item.sku}
           </p>
+        </div>
+
+        {/* New Metadata Section for PO Number and Date */}
+        <div className="grid grid-cols-2 gap-3 mb-8">
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+              <Hash size={10} /> PO Number
+            </p>
+            <p className="text-xs font-bold text-slate-700 truncate">
+              {item.po_number || "N/A"}
+            </p>
+          </div>
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+              <Calendar size={10} /> Purchased
+            </p>
+            <p className="text-xs font-bold text-slate-700">
+              {item.created_at
+                ? new Date(item.created_at).toLocaleDateString()
+                : "N/A"}
+            </p>
+          </div>
         </div>
 
         <div className="space-y-4">
