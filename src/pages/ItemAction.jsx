@@ -25,10 +25,17 @@ const ItemAction = ({ sku, setCurrentPage }) => {
       }
 
       try {
-        // Updated to fetch from purchase_order_items to get po_number
+        // Joining purchase_order_items with purchase_orders to get created_at
         const { data, error } = await supabase
           .from("purchase_order_items")
-          .select("*")
+          .select(
+            `
+            *,
+            purchase_orders (
+              created_at
+            )
+          `
+          )
           .eq("sku", sku)
           .single();
 
@@ -50,7 +57,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
     const currentValue = item[column] || 0;
 
     try {
-      // Updates remain focused on the specific item instance
+      // Update the transaction in purchase_order_items
       const { error } = await supabase
         .from("purchase_order_items")
         .update({ [column]: currentValue + 1 })
@@ -84,7 +91,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
           Item Not Found
         </h2>
         <p className="text-slate-500 mb-6">
-          The SKU provided is invalid or does not exist in the database.
+          The SKU {sku} does not exist in the Purchase Order records.
         </p>
         <button
           onClick={() => setCurrentPage("Inventory")}
@@ -121,14 +128,14 @@ const ItemAction = ({ sku, setCurrentPage }) => {
             <ShoppingCart size={36} />
           </div>
           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight leading-tight">
-            {item.item_name || item.name}
+            {item.item_name}
           </h1>
           <p className="font-mono text-blue-600 font-black mt-2 bg-blue-50 px-3 py-1 rounded-full inline-block text-xs">
             {item.sku}
           </p>
         </div>
 
-        {/* New Metadata Section for PO Number and Date */}
+        {/* Metadata Grid for PO details */}
         <div className="grid grid-cols-2 gap-3 mb-8">
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
@@ -140,11 +147,11 @@ const ItemAction = ({ sku, setCurrentPage }) => {
           </div>
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-              <Calendar size={10} /> Purchased
+              <Calendar size={10} /> Date Purchased
             </p>
             <p className="text-xs font-bold text-slate-700">
-              {item.created_at
-                ? new Date(item.created_at).toLocaleDateString()
+              {item.purchase_orders?.created_at
+                ? new Date(item.purchase_orders.created_at).toLocaleDateString()
                 : "N/A"}
             </p>
           </div>
