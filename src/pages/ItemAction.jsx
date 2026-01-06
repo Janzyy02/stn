@@ -142,7 +142,7 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
         {items.length > 1 && !selectedItem && (
           <div className="mb-6 space-y-2">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-              <Layers size={12} /> Select Specific Item to Update:
+              <Layers size={12} /> Select Specific Item to Check Stock:
             </p>
             {items.map((i) => (
               <button
@@ -196,31 +196,6 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
                   {selectedItem.outbound_qty || 0}
                 </p>
               </div>
-            </div>
-
-            <div className="space-y-3">
-              <button
-                onClick={() => handleTransaction("out")}
-                disabled={processing}
-                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 shadow-lg"
-              >
-                <ShoppingCart size={20} /> Record Outbound
-              </button>
-              <button
-                onClick={() => handleTransaction("in")}
-                disabled={processing}
-                className="w-full bg-white border-2 border-slate-200 text-slate-600 py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95"
-              >
-                <PackageCheck size={20} /> Record Inbound
-              </button>
-              {items.length > 1 && (
-                <button
-                  onClick={() => setSelectedItem(null)}
-                  className="w-full text-slate-400 text-[10px] font-black uppercase py-2"
-                >
-                  Select Different Item
-                </button>
-              )}
             </div>
           </>
         )}
