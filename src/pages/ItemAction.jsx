@@ -11,7 +11,11 @@ import {
   Hash,
 } from "lucide-react";
 
-// The component now accepts po_number instead of sku
+/**
+ * ItemAction Component
+ * Uses po_number as the primary identifier and fetches verified purchase date
+ * from the linked purchase_orders table.
+ */
 const ItemAction = ({ po_number, setCurrentPage }) => {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,8 +30,8 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
       }
 
       try {
-        // Fetches from purchase_order_items and verifies relationship
-        // with purchase_orders via the po_number field.
+        // Stop using SKU: Fetch from purchase_order_items using po_number.
+        // Inner join with purchase_orders table to verify and get created_at date.
         const { data, error } = await supabase
           .from("purchase_order_items")
           .select(
@@ -60,6 +64,7 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
     const currentValue = item[column] || 0;
 
     try {
+      // Update inventory movements using po_number as the key.
       const { error } = await supabase
         .from("purchase_order_items")
         .update({ [column]: currentValue + 1 })
@@ -68,7 +73,7 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
       if (error) throw error;
 
       setStatus("success");
-      // Auto-redirect back to inventory after 1.5 seconds on success
+      // Auto-redirect back to inventory after 1.5 seconds on success.
       setTimeout(() => {
         setCurrentPage("Inventory");
       }, 1500);
@@ -94,7 +99,7 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
           Order Not Found
         </h2>
         <p className="text-slate-500 mb-6">
-          PO Number: {po_number} does not exist in the database.
+          PO Number: {po_number || "Missing"} does not exist in the database.
         </p>
         <button
           onClick={() => setCurrentPage("Inventory")}
@@ -127,7 +132,7 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
           <ArrowLeft size={16} /> Back to Ledger
         </button>
 
-        <div className="text-center mb-6">
+        <div className="text-center mb-8">
           <div className="bg-blue-50 text-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-inner">
             <Hash size={36} />
           </div>
@@ -139,18 +144,18 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
           </p>
         </div>
 
-        {/* Verified Metadata Section using po_number and verified created_at */}
+        {/* Verified Data Grid: PO Number and Date Purchased */}
         <div className="grid grid-cols-2 gap-3 mb-8">
-          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
               <Hash size={10} /> Verified PO
             </p>
             <p className="text-xs font-bold text-slate-700 truncate">
               {item.purchase_orders?.po_number || item.po_number}
             </p>
           </div>
-          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
               <Calendar size={10} /> Date Purchased
             </p>
             <p className="text-xs font-bold text-slate-700">

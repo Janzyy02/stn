@@ -14,9 +14,10 @@ import {
   ArrowDownUp,
   X,
   Printer,
+  ArrowRight,
 } from "lucide-react";
 
-const Inventory = () => {
+const Inventory = ({ setCurrentPage, setSelectedPO }) => {
   const [inventoryItems, setInventoryItems] = useState([]);
   const [archiveItems, setArchiveItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +41,7 @@ const Inventory = () => {
 
   const fetchInventory = async () => {
     try {
+      // Joins with purchase_orders to get the verified created_at date
       const { data, error } = await supabase
         .from("purchase_order_items")
         .select(
@@ -67,8 +69,10 @@ const Inventory = () => {
         .from("daily_ledger_history")
         .select("*")
         .order("snapshot_date", { ascending: false });
+
       if (dateRange.start) query = query.gte("snapshot_date", dateRange.start);
       if (dateRange.end) query = query.lte("snapshot_date", dateRange.end);
+
       const { data, error } = await query;
       if (error) throw error;
       setArchiveItems(data || []);
@@ -90,18 +94,23 @@ const Inventory = () => {
     );
   };
 
+  const handleItemClick = (po_number) => {
+    setSelectedPO(po_number);
+    setCurrentPage("ItemAction");
+  };
+
   const handleEndDay = async () => {
     if (
       !window.confirm(
-        "End Business Day? This will snapshot movements and reset tallies."
+        "End Business Day? This will snapshot movements and reset daily tallies."
       )
     )
       return;
     try {
       setIsProcessing(true);
       const today = new Date().toISOString().split("T")[0];
+
       const historyData = inventoryItems.map((item) => ({
-        sku: item.sku,
         name: item.item_name,
         initial_qty: item.quantity,
         inbound_qty: item.inbound_qty || 0,
@@ -109,8 +118,11 @@ const Inventory = () => {
         final_balance:
           item.quantity + (item.inbound_qty || 0) - (item.outbound_qty || 0),
         snapshot_date: today,
+        po_number: item.po_number,
       }));
+
       await supabase.from("daily_ledger_history").insert(historyData);
+
       const updatePromises = inventoryItems.map((item) => {
         const netChange = (item.inbound_qty || 0) - (item.outbound_qty || 0);
         return supabase
@@ -122,9 +134,11 @@ const Inventory = () => {
           })
           .eq("id", item.id);
       });
+
       await Promise.all(updatePromises);
       fetchInventory();
       fetchArchive();
+      alert("Day closed successfully.");
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
@@ -141,7 +155,7 @@ const Inventory = () => {
 
   return (
     <div className="p-8 w-full bg-slate-50 min-h-screen font-sans text-slate-900">
-      {/* HEADER */}
+      {/* 1. HEADER */}
       <div className="flex justify-between items-end mb-8 no-print">
         <div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
@@ -154,31 +168,31 @@ const Inventory = () => {
               Station Time
             </span>
             <div className="flex items-center gap-2 text-slate-700 font-mono font-bold text-lg">
-              {currentTime}
+              <Clock size={18} className="text-blue-500" /> {currentTime}
             </div>
           </div>
           <button
             onClick={handleEndDay}
             disabled={isProcessing}
-            className="bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2"
+            className="bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-black flex items-center gap-2 shadow-lg"
           >
             {isProcessing ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <CheckCircle2 size={16} />
-            )}{" "}
+            )}
             End Business Day
           </button>
         </div>
       </div>
 
-      {/* DAILY LEDGER */}
+      {/* 2. DAILY MOVEMENT LEDGER */}
       <div className="mb-12 no-print">
         <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2 mb-4">
           <ArrowDownUp className="text-blue-600" size={20} /> Daily Movement
           Ledger
         </h2>
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-800 text-slate-300 text-[10px] uppercase font-black tracking-widest">
@@ -195,15 +209,25 @@ const Inventory = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {inventoryItems.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-6 py-4 font-bold uppercase text-slate-700">
-                    {item.item_name}
+                <tr
+                  key={item.id}
+                  className="hover:bg-slate-50/50 transition-colors"
+                >
+                  <td className="px-6 py-4">
+                    <span className="font-bold uppercase text-sm text-slate-700 block">
+                      {item.item_name}
+                    </span>
+                    <span className="font-mono text-[10px] text-slate-400">
+                      PO: {item.po_number}
+                    </span>
                   </td>
-                  <td className="px-6 py-4 text-center">{item.quantity}</td>
-                  <td className="px-6 py-4 text-center text-blue-600 font-black">
+                  <td className="px-6 py-4 text-center font-bold text-slate-500">
+                    {item.quantity}
+                  </td>
+                  <td className="px-6 py-4 text-center font-black text-blue-600">
                     +{item.inbound_qty || 0}
                   </td>
-                  <td className="px-6 py-4 text-center text-orange-600 font-black">
+                  <td className="px-6 py-4 text-center font-black text-orange-600">
                     -{item.outbound_qty || 0}
                   </td>
                   <td className="px-6 py-4 text-center font-black bg-teal-50/20 border-l text-teal-700">
@@ -218,7 +242,7 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* MASTER INVENTORY WITH QR RESTORED */}
+      {/* 3. MASTER INVENTORY */}
       <div className="mb-12 no-print">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
@@ -228,7 +252,7 @@ const Inventory = () => {
           {selectedItems.length > 0 && (
             <button
               onClick={() => setShowQRModal(true)}
-              className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2 transition-all active:scale-95"
+              className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2"
             >
               <QrCode size={16} /> Generate Labels ({selectedItems.length})
             </button>
@@ -244,7 +268,7 @@ const Inventory = () => {
                 <th className="px-6 py-4">Item Name</th>
                 <th className="px-6 py-4 text-center">Date Purchased</th>
                 <th className="px-6 py-4 text-center">Physical Stock</th>
-                <th className="px-6 py-4 text-right">PO Reference</th>
+                <th className="px-6 py-4 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -258,13 +282,16 @@ const Inventory = () => {
                       <div className="flex items-center gap-2">
                         <ShoppingBag size={14} className="text-emerald-500" />
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                          PO: {po}
+                          PO Ref: {po}
                         </span>
                       </div>
                     </td>
                   </tr>
                   {items.map((item) => (
-                    <tr key={item.id} className="hover:bg-blue-50/10">
+                    <tr
+                      key={item.id}
+                      className="hover:bg-blue-50/10 transition-colors"
+                    >
                       <td className="px-6 py-4 text-center">
                         <input
                           type="checkbox"
@@ -286,8 +313,13 @@ const Inventory = () => {
                       <td className="px-6 py-4 text-center font-black text-slate-900">
                         {item.quantity}
                       </td>
-                      <td className="px-6 py-4 text-right text-[10px] font-bold text-slate-400 uppercase tracking-tight">
-                        {po}
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => handleItemClick(item.po_number)}
+                          className="text-blue-600 hover:text-blue-800 font-black text-[10px] uppercase flex items-center gap-1 ml-auto"
+                        >
+                          Update <ArrowRight size={14} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -298,14 +330,13 @@ const Inventory = () => {
         </div>
       </div>
 
-      {/* QR MODAL */}
+      {/* 4. QR CODE MODAL */}
       {showQRModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 no-print">
           <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h3 className="font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                <Printer size={20} className="text-blue-600" /> Print Asset
-                Labels
+                <Printer size={20} className="text-blue-600" /> Asset Labels
               </h3>
               <button
                 onClick={() => setShowQRModal(false)}
@@ -314,13 +345,16 @@ const Inventory = () => {
                 <X size={24} />
               </button>
             </div>
-            <div className="p-8 overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-6 bg-white print:grid-cols-2 print:p-0">
+            <div
+              className="p-8 overflow-y-auto grid grid-cols-3 gap-6 bg-white print:grid-cols-2 print:p-0"
+              id="printable-area"
+            >
               {inventoryItems
                 .filter((i) => selectedItems.includes(i.id))
                 .map((item) => (
                   <div
                     key={item.id}
-                    className="border-2 border-slate-100 p-4 rounded-2xl flex flex-col items-center text-center space-y-3 hover:border-blue-200 transition-colors"
+                    className="border-2 border-slate-100 p-4 rounded-2xl flex flex-col items-center text-center space-y-3"
                   >
                     <QRCodeSVG
                       value={item.po_number}
@@ -329,8 +363,8 @@ const Inventory = () => {
                       includeMargin={true}
                     />
                     <div>
-                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-tighter">
-                        Asset Reference
+                      <p className="text-[10px] font-black uppercase text-slate-400">
+                        Asset Ref
                       </p>
                       <p className="text-sm font-black text-slate-800 uppercase leading-tight truncate w-full">
                         {item.item_name}
@@ -342,7 +376,7 @@ const Inventory = () => {
                   </div>
                 ))}
             </div>
-            <div className="p-6 border-t bg-slate-50 flex justify-end gap-3 no-print">
+            <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
               <button
                 onClick={() => window.print()}
                 className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center gap-2"
@@ -354,11 +388,28 @@ const Inventory = () => {
         </div>
       )}
 
-      {/* HISTORY TABLE */}
+      {/* 5. LEDGER HISTORY */}
       <div className="no-print">
-        <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2 mb-4">
-          <History className="text-blue-600" size={20} /> Ledger History
-        </h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
+            <History className="text-blue-600" size={20} /> Ledger History
+          </h2>
+          <div className="flex gap-2">
+            <input
+              type="date"
+              className="text-xs font-bold border rounded-lg px-2 py-1"
+              onChange={(e) =>
+                setDateRange({ ...dateRange, start: e.target.value })
+              }
+            />
+            <button
+              onClick={fetchArchive}
+              className="bg-slate-200 p-2 rounded-lg hover:bg-slate-300"
+            >
+              <Search size={14} />
+            </button>
+          </div>
+        </div>
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b">
@@ -367,7 +418,7 @@ const Inventory = () => {
                 <th className="px-6 py-4">Item</th>
                 <th className="px-6 py-4 text-center">In</th>
                 <th className="px-6 py-4 text-center">Out</th>
-                <th className="px-6 py-4 text-right">Balance</th>
+                <th className="px-6 py-4 text-right">Closed</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 text-xs font-bold">
