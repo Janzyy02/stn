@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
-import Dashboard from "./pages/Dashboard"; // --- IMPORT ADDED ---
+import Dashboard from "./pages/Dashboard";
 import Pricing from "./pages/Pricing";
 import Purchasing from "./pages/Purchasing";
 import PurchaseHistory from "./pages/PurchaseHistory";
@@ -9,17 +9,31 @@ import OutboundDelivery from "./pages/OutboundScheduling";
 import InvoiceHistory from "./pages/InvoiceHistory";
 import RecordSales from "./pages/RecordSales";
 import Inventory from "./pages/Inventory";
+import ItemAction from "./pages/ItemAction"; // --- IMPORT ADDED ---
 import "./App.css";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("Dashboard");
+  const [activeSku, setActiveSku] = useState(null); // State to hold SKU for ItemAction
+
+  // Effect to listen for SKU parameters if arriving via QR scan URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sku = params.get("sku");
+    if (sku) {
+      setActiveSku(sku);
+      setCurrentPage("Item Action");
+    }
+  }, []);
 
   const renderPage = () => {
     switch (currentPage) {
       case "Dashboard":
-        return <Dashboard />; // --- UPDATED TO RENDER COMPONENT ---
+        return <Dashboard />;
       case "Inventory":
         return <Inventory />;
+      case "Item Action": // --- NEW CASE ADDED ---
+        return <ItemAction sku={activeSku} setCurrentPage={setCurrentPage} />;
       case "Edit Pricing":
         return <Pricing />;
       case "Procurement":
@@ -63,7 +77,10 @@ function App() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 print:block">
-      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+      {/* Hide sidebar if on Item Action page for a cleaner mobile scan experience */}
+      {currentPage !== "Item Action" && (
+        <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+      )}
       <main className="flex-1 overflow-x-hidden print:w-full print:p-0">
         {renderPage()}
       </main>
