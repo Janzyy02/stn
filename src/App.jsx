@@ -9,25 +9,25 @@ import OutboundDelivery from "./pages/OutboundScheduling";
 import InvoiceHistory from "./pages/InvoiceHistory";
 import RecordSales from "./pages/RecordSales";
 import Inventory from "./pages/Inventory";
-import ItemAction from "./pages/ItemAction"; // --- NEW IMPORT ---
+import ItemAction from "./pages/ItemAction";
 import "./App.css";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("Dashboard");
-  const [activeSku, setActiveSku] = useState(null); // Stores SKU from QR scan
+  // Changed from activeSku to activePO to match your new database logic
+  const [activePO, setActivePO] = useState(null);
 
-  // --- QR SCAN REDIRECT LOGIC ---
+  // --- QR SCAN / URL REDIRECT LOGIC ---
   useEffect(() => {
-    // Check if the URL has a ?sku= query parameter
+    // Check if the URL has a ?po= query parameter (updated from ?sku=)
     const params = new URLSearchParams(window.location.search);
-    const sku = params.get("sku");
+    const po = params.get("po") || params.get("sku"); // Supports both for transition
 
-    if (sku) {
-      setActiveSku(sku);
+    if (po) {
+      setActivePO(po);
       setCurrentPage("Item Action");
 
-      // Clean up the URL in the browser address bar without refreshing
-      // This prevents a loop if the user refreshes the page
+      // Clean up the URL to prevent loops on refresh
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
@@ -37,9 +37,16 @@ function App() {
       case "Dashboard":
         return <Dashboard />;
       case "Inventory":
-        return <Inventory />;
-      case "Item Action": // --- NEW CASE ---
-        return <ItemAction sku={activeSku} setCurrentPage={setCurrentPage} />;
+        return (
+          <Inventory
+            setCurrentPage={setCurrentPage}
+            setSelectedPO={setActivePO}
+          />
+        );
+      case "Item Action":
+        return (
+          <ItemAction po_number={activePO} setCurrentPage={setCurrentPage} />
+        );
       case "Edit Pricing":
         return <Pricing />;
       case "Procurement":
@@ -83,9 +90,7 @@ function App() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 print:block">
-      {/* Logic: If we are in "Item Action" (usually from a phone scan), 
-         we hide the sidebar to maximize screen space for the buttons.
-      */}
+      {/* Hide sidebar on Item Action to optimize mobile scanning experience */}
       {currentPage !== "Item Action" && (
         <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
       )}

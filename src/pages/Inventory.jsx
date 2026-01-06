@@ -41,7 +41,6 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
 
   const fetchInventory = async () => {
     try {
-      // Joins with purchase_orders to get the verified created_at date
       const { data, error } = await supabase
         .from("purchase_order_items")
         .select(
@@ -96,13 +95,13 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
 
   const handleItemClick = (po_number) => {
     setSelectedPO(po_number);
-    setCurrentPage("ItemAction");
+    setCurrentPage("Item Action");
   };
 
   const handleEndDay = async () => {
     if (
       !window.confirm(
-        "End Business Day? This will snapshot movements and reset daily tallies."
+        "End Business Day? This will snapshot movements and reset tallies."
       )
     )
       return;
@@ -138,7 +137,6 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
       await Promise.all(updatePromises);
       fetchInventory();
       fetchArchive();
-      alert("Day closed successfully.");
     } catch (err) {
       alert("Error: " + err.message);
     } finally {
@@ -155,13 +153,17 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
 
   return (
     <div className="p-8 w-full bg-slate-50 min-h-screen font-sans text-slate-900">
-      {/* 1. HEADER */}
+      {/* HEADER SECTION */}
       <div className="flex justify-between items-end mb-8 no-print">
         <div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
             <Database className="text-blue-600" /> INVENTORY MANAGEMENT
           </h1>
+          <p className="text-slate-500 font-bold text-xs uppercase tracking-widest mt-1">
+            Status: <span className="text-emerald-600">Live Ledger</span>
+          </p>
         </div>
+
         <div className="flex items-center gap-6">
           <div className="flex flex-col items-end border-r border-slate-200 pr-6">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
@@ -174,7 +176,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
           <button
             onClick={handleEndDay}
             disabled={isProcessing}
-            className="bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-black flex items-center gap-2 shadow-lg"
+            className="bg-slate-900 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-black transition-all flex items-center gap-2 shadow-lg active:scale-95"
           >
             {isProcessing ? (
               <Loader2 size={16} className="animate-spin" />
@@ -186,7 +188,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
         </div>
       </div>
 
-      {/* 2. DAILY MOVEMENT LEDGER */}
+      {/* TABLE 1: DAILY MOVEMENT LEDGER */}
       <div className="mb-12 no-print">
         <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2 mb-4">
           <ArrowDownUp className="text-blue-600" size={20} /> Daily Movement
@@ -230,7 +232,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
                   <td className="px-6 py-4 text-center font-black text-orange-600">
                     -{item.outbound_qty || 0}
                   </td>
-                  <td className="px-6 py-4 text-center font-black bg-teal-50/20 border-l text-teal-700">
+                  <td className="px-6 py-4 text-center font-black bg-teal-50/20 border-l border-slate-100 text-teal-700">
                     {item.quantity +
                       (item.inbound_qty || 0) -
                       (item.outbound_qty || 0)}
@@ -242,7 +244,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
         </div>
       </div>
 
-      {/* 3. MASTER INVENTORY */}
+      {/* TABLE 2: MASTER INVENTORY */}
       <div className="mb-12 no-print">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
@@ -252,7 +254,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
           {selectedItems.length > 0 && (
             <button
               onClick={() => setShowQRModal(true)}
-              className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2"
+              className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg flex items-center gap-2 transition-all active:scale-95"
             >
               <QrCode size={16} /> Generate Labels ({selectedItems.length})
             </button>
@@ -316,7 +318,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
                       <td className="px-6 py-4 text-right">
                         <button
                           onClick={() => handleItemClick(item.po_number)}
-                          className="text-blue-600 hover:text-blue-800 font-black text-[10px] uppercase flex items-center gap-1 ml-auto"
+                          className="text-blue-600 hover:text-blue-800 font-black text-[10px] uppercase flex items-center gap-1 ml-auto transition-colors"
                         >
                           Update <ArrowRight size={14} />
                         </button>
@@ -330,41 +332,39 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
         </div>
       </div>
 
-      {/* 4. QR CODE MODAL */}
+      {/* QR MODAL */}
       {showQRModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 no-print">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h3 className="font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                <Printer size={20} className="text-blue-600" /> Asset Labels
+                <Printer size={20} className="text-blue-600" /> Print Asset
+                Labels
               </h3>
               <button
                 onClick={() => setShowQRModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-2"
+                className="text-slate-400 hover:text-slate-600 p-2 transition-colors"
               >
                 <X size={24} />
               </button>
             </div>
-            <div
-              className="p-8 overflow-y-auto grid grid-cols-3 gap-6 bg-white print:grid-cols-2 print:p-0"
-              id="printable-area"
-            >
+            <div className="p-8 overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-6 bg-white print:grid-cols-2 print:p-0">
               {inventoryItems
                 .filter((i) => selectedItems.includes(i.id))
                 .map((item) => (
                   <div
                     key={item.id}
-                    className="border-2 border-slate-100 p-4 rounded-2xl flex flex-col items-center text-center space-y-3"
+                    className="border-2 border-slate-100 p-4 rounded-2xl flex flex-col items-center text-center space-y-3 hover:border-blue-200 transition-colors"
                   >
                     <QRCodeSVG
-                      value={item.po_number}
+                      value={`${window.location.origin}?po=${item.po_number}`}
                       size={120}
                       level="H"
                       includeMargin={true}
                     />
                     <div>
-                      <p className="text-[10px] font-black uppercase text-slate-400">
-                        Asset Ref
+                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-tighter">
+                        Asset Reference
                       </p>
                       <p className="text-sm font-black text-slate-800 uppercase leading-tight truncate w-full">
                         {item.item_name}
@@ -376,10 +376,10 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
                   </div>
                 ))}
             </div>
-            <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
+            <div className="p-6 border-t bg-slate-50 flex justify-end gap-3 no-print">
               <button
                 onClick={() => window.print()}
-                className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center gap-2"
+                className="bg-slate-900 text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center gap-2 hover:bg-black transition-all active:scale-95 shadow-lg"
               >
                 <Printer size={16} /> Print Labels
               </button>
@@ -388,7 +388,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
         </div>
       )}
 
-      {/* 5. LEDGER HISTORY */}
+      {/* TABLE 3: LEDGER HISTORY */}
       <div className="no-print">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
@@ -397,14 +397,14 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
           <div className="flex gap-2">
             <input
               type="date"
-              className="text-xs font-bold border rounded-lg px-2 py-1"
+              className="text-xs font-bold border rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
               onChange={(e) =>
                 setDateRange({ ...dateRange, start: e.target.value })
               }
             />
             <button
               onClick={fetchArchive}
-              className="bg-slate-200 p-2 rounded-lg hover:bg-slate-300"
+              className="bg-slate-200 p-2 rounded-lg hover:bg-slate-300 transition-colors"
             >
               <Search size={14} />
             </button>
@@ -412,31 +412,34 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
         </div>
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b">
-              <tr>
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Item</th>
-                <th className="px-6 py-4 text-center">In</th>
-                <th className="px-6 py-4 text-center">Out</th>
-                <th className="px-6 py-4 text-right">Closed</th>
+            <thead>
+              <tr className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest border-b">
+                <th className="px-6 py-4">Snapshot Date</th>
+                <th className="px-6 py-4">Item Name</th>
+                <th className="px-6 py-4 text-center">Daily In</th>
+                <th className="px-6 py-4 text-center">Daily Out</th>
+                <th className="px-6 py-4 text-right">Closed Balance</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 text-xs font-bold">
+            <tbody className="divide-y divide-slate-50">
               {archiveItems.map((record) => (
-                <tr key={record.id}>
-                  <td className="px-6 py-3 text-slate-500 font-mono">
+                <tr
+                  key={record.id}
+                  className="text-xs hover:bg-slate-50/50 transition-colors"
+                >
+                  <td className="px-6 py-3 font-mono text-slate-500">
                     {record.snapshot_date}
                   </td>
-                  <td className="px-6 py-3 uppercase text-slate-700">
+                  <td className="px-6 py-3 font-bold text-slate-700 uppercase">
                     {record.name}
                   </td>
-                  <td className="px-6 py-3 text-center text-blue-600">
+                  <td className="px-6 py-3 text-center text-blue-600 font-bold">
                     +{record.inbound_qty}
                   </td>
-                  <td className="px-6 py-3 text-center text-orange-600">
+                  <td className="px-6 py-3 text-center text-orange-600 font-bold">
                     -{record.outbound_qty}
                   </td>
-                  <td className="px-6 py-3 text-right font-black">
+                  <td className="px-6 py-3 text-right font-black text-slate-900">
                     {record.final_balance}
                   </td>
                 </tr>
