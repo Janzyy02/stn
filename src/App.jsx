@@ -9,20 +9,26 @@ import OutboundDelivery from "./pages/OutboundScheduling";
 import InvoiceHistory from "./pages/InvoiceHistory";
 import RecordSales from "./pages/RecordSales";
 import Inventory from "./pages/Inventory";
-import ItemAction from "./pages/ItemAction"; // --- IMPORT ADDED ---
+import ItemAction from "./pages/ItemAction"; // --- NEW IMPORT ---
 import "./App.css";
 
 function App() {
   const [currentPage, setCurrentPage] = useState("Dashboard");
-  const [activeSku, setActiveSku] = useState(null); // State to hold SKU for ItemAction
+  const [activeSku, setActiveSku] = useState(null); // Stores SKU from QR scan
 
-  // Effect to listen for SKU parameters if arriving via QR scan URL
+  // --- QR SCAN REDIRECT LOGIC ---
   useEffect(() => {
+    // Check if the URL has a ?sku= query parameter
     const params = new URLSearchParams(window.location.search);
     const sku = params.get("sku");
+
     if (sku) {
       setActiveSku(sku);
       setCurrentPage("Item Action");
+
+      // Clean up the URL in the browser address bar without refreshing
+      // This prevents a loop if the user refreshes the page
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
 
@@ -32,7 +38,7 @@ function App() {
         return <Dashboard />;
       case "Inventory":
         return <Inventory />;
-      case "Item Action": // --- NEW CASE ADDED ---
+      case "Item Action": // --- NEW CASE ---
         return <ItemAction sku={activeSku} setCurrentPage={setCurrentPage} />;
       case "Edit Pricing":
         return <Pricing />;
@@ -77,11 +83,18 @@ function App() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 print:block">
-      {/* Hide sidebar if on Item Action page for a cleaner mobile scan experience */}
+      {/* Logic: If we are in "Item Action" (usually from a phone scan), 
+         we hide the sidebar to maximize screen space for the buttons.
+      */}
       {currentPage !== "Item Action" && (
         <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
       )}
-      <main className="flex-1 overflow-x-hidden print:w-full print:p-0">
+
+      <main
+        className={`flex-1 overflow-x-hidden print:w-full print:p-0 ${
+          currentPage === "Item Action" ? "w-full" : ""
+        }`}
+      >
         {renderPage()}
       </main>
     </div>
