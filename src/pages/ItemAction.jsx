@@ -166,30 +166,6 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
           </div>
         </div>
 
-        <div className="space-y-4">
-          <button
-            disabled={processing}
-            onClick={() => handleTransaction("out")}
-            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-3 shadow-lg active:scale-95 disabled:opacity-50"
-          >
-            {processing ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <ShoppingCart size={20} />
-            )}
-            Confirm Purchase
-          </button>
-
-          <button
-            disabled={processing}
-            onClick={() => handleTransaction("in")}
-            className="w-full bg-white border-2 border-slate-200 text-slate-600 py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
-          >
-            <PackageCheck size={20} />
-            Restock Item
-          </button>
-        </div>
-
         <div className="mt-10 pt-8 border-t border-slate-100 flex justify-between items-center">
           <div>
             <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
