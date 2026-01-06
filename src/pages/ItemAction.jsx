@@ -11,22 +11,21 @@ import {
   Hash,
 } from "lucide-react";
 
-const ItemAction = ({ sku, setCurrentPage }) => {
+const ItemAction = ({ po_number, setCurrentPage }) => {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [status, setStatus] = useState(null); // 'success' | 'error'
 
   useEffect(() => {
-    const fetchItem = async () => {
-      if (!sku) {
+    const fetchItemByPO = async () => {
+      if (!po_number) {
         setLoading(false);
         return;
       }
 
       try {
-        // Fetches from purchase_order_items and verifies the relationship
-        // with purchase_orders via the po_number field.
+        // Fetch from purchase_order_items and verify link with purchase_orders
         const { data, error } = await supabase
           .from("purchase_order_items")
           .select(
@@ -38,7 +37,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
             )
           `
           )
-          .eq("sku", sku)
+          .eq("po_number", po_number)
           .single();
 
         if (error) throw error;
@@ -50,8 +49,8 @@ const ItemAction = ({ sku, setCurrentPage }) => {
       }
     };
 
-    fetchItem();
-  }, [sku]);
+    fetchItemByPO();
+  }, [po_number]);
 
   const handleTransaction = async (type) => {
     setProcessing(true);
@@ -62,7 +61,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
       const { error } = await supabase
         .from("purchase_order_items")
         .update({ [column]: currentValue + 1 })
-        .eq("sku", sku);
+        .eq("po_number", po_number);
 
       if (error) throw error;
 
@@ -84,14 +83,16 @@ const ItemAction = ({ sku, setCurrentPage }) => {
     );
   }
 
-  if (!sku || !item) {
+  if (!po_number || !item) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
         <AlertCircle size={60} className="text-red-500 mb-4" />
         <h2 className="text-2xl font-black text-slate-800 uppercase">
           Item Not Found
         </h2>
-        <p className="text-slate-500 mb-6">SKU: {sku}</p>
+        <p className="text-slate-500 mb-6">
+          PO Number: {po_number} does not exist.
+        </p>
         <button
           onClick={() => setCurrentPage("Inventory")}
           className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold uppercase tracking-widest"
@@ -134,7 +135,6 @@ const ItemAction = ({ sku, setCurrentPage }) => {
           </p>
         </div>
 
-        {/* Verified Metadata Section */}
         <div className="grid grid-cols-2 gap-3 mb-8">
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
