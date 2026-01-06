@@ -15,6 +15,8 @@ import {
   X,
   Printer,
   ArrowRight,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 const Inventory = ({ setCurrentPage, setSelectedPO }) => {
@@ -24,6 +26,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedItems, setSelectedItems] = useState([]);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [expandedPOs, setExpandedPOs] = useState({}); // State to track visible batches
   const [currentTime, setCurrentTime] = useState(
     new Date().toLocaleTimeString()
   );
@@ -55,6 +58,13 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
 
       if (error) throw error;
       setInventoryItems(data || []);
+
+      // Initialize all PO sections as expanded by default
+      const initialExpanded = {};
+      data?.forEach((item) => {
+        initialExpanded[item.po_number] = true;
+      });
+      setExpandedPOs(initialExpanded);
     } catch (err) {
       console.error("Error fetching items:", err.message);
     } finally {
@@ -87,10 +97,28 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
     return acc;
   }, {});
 
-  const toggleSelect = (id) => {
-    setSelectedItems((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+  // NEW: Logic to toggle selection for a whole batch
+  const toggleBatch = (itemsInBatch) => {
+    const batchIds = itemsInBatch.map((item) => item.id);
+    const allInBatchSelected = batchIds.every((id) =>
+      selectedItems.includes(id)
     );
+
+    if (allInBatchSelected) {
+      // Remove all items of this batch from selection
+      setSelectedItems((prev) => prev.filter((id) => !batchIds.includes(id)));
+    } else {
+      // Add all items of this batch to selection
+      setSelectedItems((prev) => [...new Set([...prev, ...batchIds])]);
+    }
+  };
+
+  // NEW: Logic to show/hide items under a PO reference
+  const togglePOVisibility = (po) => {
+    setExpandedPOs((prev) => ({
+      ...prev,
+      [po]: !prev[po],
+    }));
   };
 
   const handleItemClick = (po_number) => {
@@ -265,7 +293,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
             <thead>
               <tr className="bg-slate-100 text-slate-500 text-[10px] uppercase font-black tracking-widest border-b">
                 <th className="px-6 py-4 w-12 text-center">
-                  <QrCode size={14} className="mx-auto" />
+                  <ShoppingBag size={14} className="mx-auto" />
                 </th>
                 <th className="px-6 py-4">Item Name</th>
                 <th className="px-6 py-4 text-center">Date Purchased</th>
@@ -276,55 +304,91 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
             <tbody className="divide-y divide-slate-100">
               {Object.entries(groupedByPO).map(([po, items]) => (
                 <React.Fragment key={po}>
-                  <tr className="bg-slate-50/50">
+                  {/* BATCH HEADER ROW: Handles batch selection and accordion toggle */}
+                  <tr
+                    className="bg-slate-50/80 hover:bg-slate-100/80 cursor-pointer transition-colors"
+                    onClick={() => togglePOVisibility(po)}
+                  >
                     <td
-                      colSpan="5"
+                      className="px-6 py-2 border-y border-slate-100 text-center"
+                      onClick={(e) => e.stopPropagation()} // Prevent selection click from toggling accordion
+                    >
+                      <input
+                        type="checkbox"
+                        checked={items.every((i) =>
+                          selectedItems.includes(i.id)
+                        )}
+                        onChange={() => toggleBatch(items)}
+                        className="rounded accent-emerald-600 cursor-pointer"
+                      />
+                    </td>
+                    <td
+                      colSpan="4"
                       className="px-6 py-2 border-y border-slate-100"
                     >
-                      <div className="flex items-center gap-2">
-                        <ShoppingBag size={14} className="text-emerald-500" />
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                          PO Ref: {po}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {expandedPOs[po] ? (
+                            <ChevronDown size={16} className="text-slate-400" />
+                          ) : (
+                            <ChevronRight
+                              size={16}
+                              className="text-slate-400"
+                            />
+                          )}
+                          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">
+                            PO Reference: {po}{" "}
+                            <span className="ml-2 text-slate-400">
+                              ({items.length} Items)
+                            </span>
+                          </span>
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase">
+                          {expandedPOs[po]
+                            ? "Click to collapse"
+                            : "Click to expand"}
                         </span>
                       </div>
                     </td>
                   </tr>
-                  {items.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="hover:bg-blue-50/10 transition-colors"
-                    >
-                      <td className="px-6 py-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedItems.includes(item.id)}
-                          onChange={() => toggleSelect(item.id)}
-                          className="rounded accent-blue-600"
-                        />
-                      </td>
-                      <td className="px-6 py-4 font-bold uppercase text-sm text-slate-700">
-                        {item.item_name}
-                      </td>
-                      <td className="px-6 py-4 text-center text-xs font-bold text-slate-500">
-                        {item.purchase_orders?.created_at
-                          ? new Date(
-                              item.purchase_orders.created_at
-                            ).toLocaleDateString()
-                          : "N/A"}
-                      </td>
-                      <td className="px-6 py-4 text-center font-black text-slate-900">
-                        {item.quantity}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => handleItemClick(item.po_number)}
-                          className="text-blue-600 hover:text-blue-800 font-black text-[10px] uppercase flex items-center gap-1 ml-auto transition-colors"
-                        >
-                          Update <ArrowRight size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+
+                  {/* ITEM ROWS: Hidden/Shown via accordion state; individual checkboxes removed */}
+                  {expandedPOs[po] &&
+                    items.map((item) => (
+                      <tr
+                        key={item.id}
+                        className={`transition-colors ${
+                          selectedItems.includes(item.id)
+                            ? "bg-blue-50/20"
+                            : "hover:bg-blue-50/10"
+                        }`}
+                      >
+                        <td className="px-6 py-4 text-center">
+                          {/* Cell placeholder for alignment */}
+                        </td>
+                        <td className="px-6 py-4 font-bold uppercase text-sm text-slate-700">
+                          {item.item_name}
+                        </td>
+                        <td className="px-6 py-4 text-center text-xs font-bold text-slate-500">
+                          {item.purchase_orders?.created_at
+                            ? new Date(
+                                item.purchase_orders.created_at
+                              ).toLocaleDateString()
+                            : "N/A"}
+                        </td>
+                        <td className="px-6 py-4 text-center font-black text-slate-900">
+                          {item.quantity}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button
+                            onClick={() => handleItemClick(item.po_number)}
+                            className="text-blue-600 hover:text-blue-800 font-black text-[10px] uppercase flex items-center gap-1 ml-auto transition-colors"
+                          >
+                            Update <ArrowRight size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                 </React.Fragment>
               ))}
             </tbody>
