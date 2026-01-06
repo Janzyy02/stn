@@ -25,8 +25,8 @@ const ItemAction = ({ sku, setCurrentPage }) => {
       }
 
       try {
-        // We fetch from purchase_order_items and join purchase_orders!inner
-        // to verify the link and get the official created_at date
+        // Fetches from purchase_order_items and verifies the relationship
+        // with purchase_orders via the po_number field.
         const { data, error } = await supabase
           .from("purchase_order_items")
           .select(
@@ -138,7 +138,7 @@ const ItemAction = ({ sku, setCurrentPage }) => {
         <div className="grid grid-cols-2 gap-3 mb-8">
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-              Verified PO
+              Verified Order
             </p>
             <p className="text-xs font-bold text-slate-700 truncate">
               {item.purchase_orders?.po_number || "N/A"}
