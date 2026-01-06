@@ -9,26 +9,24 @@ import {
   CheckCircle,
   Calendar,
   Hash,
-  Database,
+  Layers,
 } from "lucide-react";
 
 const ItemAction = ({ po_number, setCurrentPage }) => {
-  const [item, setItem] = useState(null);
+  const [items, setItems] = useState([]); // Changed to an array
+  const [selectedItem, setSelectedItem] = useState(null); // The specific record being updated
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
-    const fetchItemByPO = async () => {
-      // Logic: Ensure we have a po_number to search for
+    const fetchItemsByPO = async () => {
       if (!po_number) {
         setLoading(false);
         return;
       }
 
       try {
-        // We use a Left Join (removing !inner) so that if the
-        // purchase_orders record is missing, we still see the item.
         const { data, error } = await supabase
           .from("purchase_order_items")
           .select(
@@ -40,11 +38,14 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
             )
           `
           )
-          .eq("po_number", po_number)
-          .maybeSingle(); // Prevents crash if query returns 0 results
+          .eq("po_number", po_number); // Removed .single() to allow multiple matches
 
         if (error) throw error;
-        setItem(data);
+
+        setItems(data || []);
+        if (data && data.length === 1) {
+          setSelectedItem(data[0]); // Auto-select if only one item found
+        }
       } catch (err) {
         console.error("Fetch Error:", err.message);
       } finally {
@@ -52,24 +53,25 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
       }
     };
 
-    fetchItemByPO();
+    fetchItemsByPO();
   }, [po_number]);
 
   const handleTransaction = async (type) => {
+    if (!selectedItem) return;
     setProcessing(true);
+
     const column = type === "out" ? "outbound_qty" : "inbound_qty";
-    const currentValue = item[column] || 0;
+    const currentValue = selectedItem[column] || 0;
 
     try {
       const { error } = await supabase
         .from("purchase_order_items")
         .update({ [column]: currentValue + 1 })
-        .eq("po_number", po_number);
+        .eq("id", selectedItem.id); // Update by UNIQUE ID, not PO number
 
       if (error) throw error;
 
       setStatus("success");
-      // Redirect back to main inventory after a short delay
       setTimeout(() => setCurrentPage("Inventory"), 1500);
     } catch (err) {
       alert("Error updating: " + err.message);
@@ -84,25 +86,22 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
       </div>
     );
 
-  // Error State: If PO Number is not found in purchase_order_items
-  if (!item)
+  if (items.length === 0)
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-50">
-        <div className="bg-white p-10 rounded-3xl shadow-xl border border-slate-200 flex flex-col items-center">
-          <AlertCircle size={64} className="text-red-500 mb-4" />
-          <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">
+        <div className="bg-white p-10 rounded-3xl shadow-xl border border-slate-200">
+          <AlertCircle size={64} className="text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-black text-slate-800 uppercase">
             PO Not Found
           </h2>
-          <p className="text-slate-500 mt-2 font-medium max-w-xs">
-            The PO Number{" "}
-            <span className="text-blue-600 font-bold">#{po_number}</span> could
-            not be located in the current inventory.
+          <p className="text-slate-500 mt-2 font-medium">
+            #{po_number} is not in the system.
           </p>
           <button
             onClick={() => setCurrentPage("Inventory")}
-            className="mt-8 bg-slate-900 text-white px-10 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-black transition-all active:scale-95"
+            className="mt-8 bg-slate-900 text-white px-10 py-4 rounded-2xl font-black uppercase text-xs tracking-widest"
           >
-            Return to Ledger
+            Return
           </button>
         </div>
       </div>
@@ -110,111 +109,121 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-200 relative overflow-hidden">
-        {/* Success Animation Overlay */}
+      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md border border-slate-200 relative">
         {status === "success" && (
-          <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
-            <div className="bg-emerald-100 p-4 rounded-full mb-4">
-              <CheckCircle size={60} className="text-emerald-500" />
-            </div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">
-              Inventory Updated
+          <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-3xl">
+            <CheckCircle size={60} className="text-emerald-500 mb-2" />
+            <h2 className="text-2xl font-black text-slate-800 uppercase">
+              Updated
             </h2>
-            <p className="text-slate-500 font-bold text-sm uppercase mt-1">
-              Syncing with database...
-            </p>
           </div>
         )}
 
         <button
           onClick={() => setCurrentPage("Inventory")}
-          className="text-slate-400 hover:text-slate-600 flex items-center gap-2 mb-8 font-bold text-xs uppercase tracking-widest transition-colors"
+          className="text-slate-400 mb-8 font-bold text-xs uppercase tracking-widest flex items-center gap-2"
         >
-          <ArrowLeft size={16} /> Back to Inventory
+          <ArrowLeft size={16} /> Back
         </button>
 
-        <div className="text-center mb-8">
-          <div className="bg-blue-50 text-blue-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-inner">
-            <Hash size={36} />
+        <div className="text-center mb-6">
+          <div className="bg-blue-50 text-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <Hash size={28} />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight leading-none">
-            PO #{item.po_number}
+          <h1 className="text-2xl font-black text-slate-900">
+            PO #{po_number}
           </h1>
-          <p className="text-slate-400 font-bold mt-2 text-xs uppercase tracking-widest">
-            {item.item_name}
+          <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">
+            Verified Purchase Records
           </p>
         </div>
 
-        {/* DETAILS GRID */}
-        <div className="grid grid-cols-2 gap-4 mb-8">
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-              <Calendar size={12} className="text-blue-500" /> Date Purchased
+        {/* MULTI-ITEM SELECTION (If items have same name/PO) */}
+        {items.length > 1 && !selectedItem && (
+          <div className="mb-6 space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+              <Layers size={12} /> Select Specific Item to Update:
             </p>
-            <p className="text-xs font-black text-slate-700">
-              {item.purchase_orders?.created_at
-                ? new Date(item.purchase_orders.created_at).toLocaleDateString()
-                : "UNVERIFIED"}
-            </p>
+            {items.map((i) => (
+              <button
+                key={i.id}
+                onClick={() => setSelectedItem(i)}
+                className="w-full text-left p-4 rounded-xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 transition-all group"
+              >
+                <p className="font-black text-slate-700 uppercase text-sm group-hover:text-blue-700">
+                  {i.item_name}
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase">
+                  Stock: {i.quantity}
+                </p>
+              </button>
+            ))}
           </div>
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-              <Database size={12} className="text-emerald-500" /> Physical Stock
-            </p>
-            <p className="text-xs font-black text-slate-900">
-              {item.quantity} Units
-            </p>
-          </div>
-        </div>
+        )}
 
-        {/* ACTION BUTTONS */}
-        <div className="space-y-4">
-          <button
-            onClick={() => handleTransaction("out")}
-            disabled={processing}
-            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 shadow-lg hover:bg-black transition-all disabled:opacity-50"
-          >
-            {processing ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <ShoppingCart size={20} />
-            )}
-            Confirm Sale / Outbound
-          </button>
+        {/* ACTION UI (Shows when one item is selected) */}
+        {selectedItem && (
+          <>
+            <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 mb-6 text-center">
+              <p className="font-black text-blue-800 uppercase text-sm">
+                {selectedItem.item_name}
+              </p>
+              <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">
+                Purchased:{" "}
+                {selectedItem.purchase_orders?.created_at
+                  ? new Date(
+                      selectedItem.purchase_orders.created_at
+                    ).toLocaleDateString()
+                  : "Unverified"}
+              </p>
+            </div>
 
-          <button
-            onClick={() => handleTransaction("in")}
-            disabled={processing}
-            className="w-full bg-white border-2 border-slate-200 text-slate-600 py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 hover:bg-slate-50 transition-all disabled:opacity-50"
-          >
-            {processing ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <PackageCheck size={20} />
-            )}
-            Restock / Inbound
-          </button>
-        </div>
+            <div className="grid grid-cols-2 gap-4 mb-8">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-center">
+                <p className="text-[9px] font-black text-slate-400 uppercase">
+                  In-Stock
+                </p>
+                <p className="text-sm font-black text-slate-900">
+                  {selectedItem.quantity}
+                </p>
+              </div>
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-center">
+                <p className="text-[9px] font-black text-slate-400 uppercase">
+                  Today's Net
+                </p>
+                <p className="text-sm font-black text-slate-900">
+                  +{selectedItem.inbound_qty || 0} / -
+                  {selectedItem.outbound_qty || 0}
+                </p>
+              </div>
+            </div>
 
-        {/* DAILY TALLY FOOTER */}
-        <div className="mt-8 pt-6 border-t border-dashed border-slate-200 flex justify-between items-center px-2">
-          <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-              Today In
-            </p>
-            <p className="font-bold text-blue-600 text-sm">
-              +{item.inbound_qty || 0}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-              Today Out
-            </p>
-            <p className="font-bold text-orange-600 text-sm">
-              -{item.outbound_qty || 0}
-            </p>
-          </div>
-        </div>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleTransaction("out")}
+                disabled={processing}
+                className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 shadow-lg"
+              >
+                <ShoppingCart size={20} /> Record Outbound
+              </button>
+              <button
+                onClick={() => handleTransaction("in")}
+                disabled={processing}
+                className="w-full bg-white border-2 border-slate-200 text-slate-600 py-5 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95"
+              >
+                <PackageCheck size={20} /> Record Inbound
+              </button>
+              {items.length > 1 && (
+                <button
+                  onClick={() => setSelectedItem(null)}
+                  className="w-full text-slate-400 text-[10px] font-black uppercase py-2"
+                >
+                  Select Different Item
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
