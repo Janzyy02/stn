@@ -11,7 +11,7 @@ import {
   Hash,
 } from "lucide-react";
 
-// Changed prop from sku to po_number
+// The component now accepts po_number instead of sku
 const ItemAction = ({ po_number, setCurrentPage }) => {
   const [item, setItem] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,8 +26,8 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
       }
 
       try {
-        // Stop using SKU: Fetch from purchase_order_items using po_number
-        // Inner join with purchase_orders to verify the relationship and get created_at
+        // Fetches from purchase_order_items and verifies relationship
+        // with purchase_orders via the po_number field.
         const { data, error } = await supabase
           .from("purchase_order_items")
           .select(
@@ -60,7 +60,6 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
     const currentValue = item[column] || 0;
 
     try {
-      // Update inventory using po_number instead of SKU
       const { error } = await supabase
         .from("purchase_order_items")
         .update({ [column]: currentValue + 1 })
@@ -69,6 +68,7 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
       if (error) throw error;
 
       setStatus("success");
+      // Auto-redirect back to inventory after 1.5 seconds on success
       setTimeout(() => {
         setCurrentPage("Inventory");
       }, 1500);
@@ -94,7 +94,7 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
           Order Not Found
         </h2>
         <p className="text-slate-500 mb-6">
-          PO Number: {po_number || "Missing"} does not exist in the database.
+          PO Number: {po_number} does not exist in the database.
         </p>
         <button
           onClick={() => setCurrentPage("Inventory")}
@@ -139,7 +139,7 @@ const ItemAction = ({ po_number, setCurrentPage }) => {
           </p>
         </div>
 
-        {/* Verified Metadata Section */}
+        {/* Verified Metadata Section using po_number and verified created_at */}
         <div className="grid grid-cols-2 gap-3 mb-8">
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
