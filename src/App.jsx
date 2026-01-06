@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import Sidebar from "./components/Sidebar";
+import Dashboard from "./pages/Dashboard"; // --- IMPORT ADDED ---
 import Pricing from "./pages/Pricing";
 import Purchasing from "./pages/Purchasing";
 import PurchaseHistory from "./pages/PurchaseHistory";
 import InboundDelivery from "./pages/InboundScheduling";
 import OutboundDelivery from "./pages/OutboundScheduling";
-import InvoiceHistory from "./pages/InvoiceHistory"; // - Added this import
+import InvoiceHistory from "./pages/InvoiceHistory";
 import RecordSales from "./pages/RecordSales";
 import Inventory from "./pages/Inventory";
 import "./App.css";
@@ -16,21 +17,14 @@ function App() {
   const renderPage = () => {
     switch (currentPage) {
       case "Dashboard":
-        return (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold italic uppercase text-slate-800">
-              Dashboard
-            </h2>
-            <p className="text-slate-500">Welcome back, Administrator.</p>
-          </div>
-        );
+        return <Dashboard />; // --- UPDATED TO RENDER COMPONENT ---
       case "Inventory":
         return <Inventory />;
       case "Edit Pricing":
         return <Pricing />;
-      case "Purchasing":
+      case "Procurement":
         return <Purchasing />;
-      case "Purchase History":
+      case "Procurement History":
         return <PurchaseHistory />;
       case "Inbound Delivery":
         return <InboundDelivery />;
@@ -38,7 +32,7 @@ function App() {
         return <RecordSales />;
       case "Outbound Delivery":
         return <OutboundDelivery />;
-      case "Invoice History": // - Added this case
+      case "Invoice History":
         return <InvoiceHistory />;
       case "Add User":
         return (
@@ -56,15 +50,6 @@ function App() {
               User Directory
             </h2>
             <p className="text-slate-500">View and manage staff accounts.</p>
-          </div>
-        );
-      case "Edit Pricing":
-        return (
-          <div className="p-8">
-            <h2 className="text-2xl font-bold italic uppercase text-slate-800">
-              Edit Pricing
-            </h2>
-            <p className="text-slate-500">Markup and discount management.</p>
           </div>
         );
       default:

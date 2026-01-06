@@ -173,24 +173,24 @@ const RecordSales = () => {
 
       if (itemsError) throw itemsError;
 
-      // 4. Update Hardware Inventory (Decrement Stock & Increment Outbound Qty)
+      // 4. Update Outbound Qty ONLY (Master Quantity is NOT deducted here)
       for (const cartItem of cart) {
         const { data: dbItem, error: fetchError } = await supabase
           .from("hardware_inventory")
-          .select("quantity, outbound_qty")
+          .select("outbound_qty")
           .eq("id", cartItem.id)
           .single();
 
         if (fetchError) throw fetchError;
 
-        const currentQty = dbItem.quantity || 0;
-        const currentOutbound = dbItem.outbound_qty || 0; // Fetch current outbound
+        const currentOutbound = dbItem.outbound_qty || 0;
 
         const { error: updateError } = await supabase
           .from("hardware_inventory")
           .update({
-            quantity: currentQty - cartItem.qty,
-            outbound_qty: currentOutbound + cartItem.qty, // Increment outbound
+            // We only increment outbound_qty.
+            // hardware_inventory.quantity remains the same until "End Business Day" is clicked.
+            outbound_qty: currentOutbound + cartItem.qty,
           })
           .eq("id", cartItem.id);
 
@@ -502,7 +502,10 @@ const RecordSales = () => {
 // --- CARD SUB-COMPONENT ---
 const SalesItemCard = ({ item, onAdd }) => {
   const [qty, setQty] = useState(1);
-  const outOfStock = (item.quantity || 0) <= 0;
+
+  // Calculate Effective Stock (Master Qty - Today's Outbound)
+  const effectiveStock = (item.quantity || 0) - (item.outbound_qty || 0);
+  const outOfStock = effectiveStock <= 0;
 
   return (
     <div
@@ -530,7 +533,8 @@ const SalesItemCard = ({ item, onAdd }) => {
                 : "bg-green-50 text-green-600"
             }`}
           >
-            {item.quantity || 0} In Stock
+            {/* Show Effective Stock to prevent over-selling */}
+            {effectiveStock} In Stock
           </span>
         </div>
         <h3 className="font-black uppercase text-xs text-black mb-1 line-clamp-2 leading-tight h-8">

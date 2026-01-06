@@ -1,241 +1,455 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { supabase } from "../supabaseClient";
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+} from "recharts";
+import {
+  TrendingUp,
+  ShoppingCart,
+  Package,
+  AlertTriangle,
+  ArrowUpRight,
+  Loader2,
+  Activity,
+  Timer,
+  Zap,
+  Target,
+  BarChart3,
+  Flame,
+  Info,
+  Trash2,
+} from "lucide-react";
 
 const Dashboard = () => {
+  const [inventory, setInventory] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const { data: invData } = await supabase
+        .from("hardware_inventory")
+        .select("*");
+      const { data: histData } = await supabase
+        .from("daily_ledger_history")
+        .select("*")
+        .order("snapshot_date", { ascending: true });
+      setInventory(invData || []);
+      setHistory(histData || []);
+    } catch (err) {
+      console.error("Dashboard Load Error:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- BI LOGIC: MAD & ANALYTICS ---
+  const calculateMAD = (itemName) => {
+    const itemHistory = history.filter((h) => h.name === itemName).slice(-7);
+    if (itemHistory.length === 0) return 0;
+    const mean =
+      itemHistory.reduce((acc, h) => acc + h.outbound_qty, 0) /
+      itemHistory.length;
+    const absoluteDeviations = itemHistory.map((h) =>
+      Math.abs(h.outbound_qty - mean)
+    );
+    return (
+      absoluteDeviations.reduce((acc, d) => acc + d, 0) / itemHistory.length
+    );
+  };
+
+  const getABCAnalytics = (item) => {
+    const velocityScore = (item.outbound_qty || 0) * (item.quantity || 1);
+    if (velocityScore > 100)
+      return {
+        label: "A",
+        color: "bg-purple-100 text-purple-700",
+        desc: "High Value",
+      };
+    if (velocityScore > 30)
+      return { label: "B", color: "bg-blue-100 text-blue-700", desc: "Steady" };
+    return { label: "C", color: "bg-slate-100 text-slate-600", desc: "Slow" };
+  };
+
+  const stockoutRiskItems = inventory.filter(
+    (i) => i.quantity / (i.outbound_qty || 1) < 3 && i.quantity > 0
+  );
+
+  // --- CHART DATA PREP ---
+  const velocityData = history.slice(-10).map((h) => ({
+    date: new Date(h.snapshot_date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    }),
+    sales: h.outbound_qty,
+    upperBound: h.outbound_qty + calculateMAD(h.name) * 1.65,
+  }));
+
+  const ageingData = [
+    {
+      name: "0-30d",
+      value: inventory.filter((i) => i.outbound_qty > 5).length,
+      fill: "#10b981",
+    },
+    {
+      name: "31-60d",
+      value: inventory.filter((i) => i.outbound_qty <= 5 && i.outbound_qty > 0)
+        .length,
+      fill: "#3b82f6",
+    },
+    {
+      name: "61-90d",
+      value: inventory.filter((i) => i.outbound_qty === 0).length,
+      fill: "#f59e0b",
+    },
+    { name: "90d+", value: 2, fill: "#ef4444" },
+  ];
+
+  if (loading)
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-slate-50">
+        <Loader2 className="animate-spin text-teal-600" size={40} />
+      </div>
+    );
+
   return (
-    <main className="flex-1 p-8 bg-[#E5E7EB]/50 min-h-screen">
-      {/* Header Section */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between mb-8">
+    <main className="flex-1 p-8 bg-slate-50 min-h-screen font-sans">
+      <header className="mb-10 flex justify-between items-end">
         <div>
-          <h1 className="text-4xl font-extrabold text-gray-900">
-            Inventory Dashboard
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase italic">
+            STN Command Center
           </h1>
-          <p className="text-gray-500 text-lg">
-            Hello Robert, let's look at your financial data
+          <p className="text-slate-500 font-medium">
+            Predictive Procurement & Inventory Health
           </p>
         </div>
-
-        <div className="flex flex-col gap-2 mt-4 md:mt-0 items-end">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">Select BI Dashboard:</span>
-            <select className="bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm shadow-sm outline-none">
-              <option>Inventory</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">Showing data:</span>
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-2 text-sm shadow-sm flex items-center gap-2 cursor-pointer">
-              <span>01 Mar, 2024 - 14 Mar, 2024</span>
-              <span className="text-gray-400">📅</span>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-700 font-bold text-xs uppercase">
+          <Zap size={14} className="text-amber-500" /> Webhook: Active
         </div>
       </header>
 
-      {/* Dashboard Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Total Inventory Value */}
-        <Card
-          title="Total Inventory Value"
-          subtitle="From 1-14 Mar, 2024"
-          btnLabel="View More"
-        >
-          <div className="mt-2">
-            <h2 className="text-4xl font-bold text-gray-800">₱100,000.00</h2>
-            <div className="flex items-center text-green-600 font-medium mt-1">
-              <span className="mr-1">📈</span> ₱10,000 Increase
-            </div>
-          </div>
-        </Card>
-
-        {/* Top Selling Products */}
-        <Card
-          title="Top Selling Products"
-          subtitle="From 1-14 Mar, 2024"
-          btnLabel="View more"
-        >
-          <div className="flex items-center justify-between gap-2 mt-2">
-            <div className="relative w-24 h-24 flex items-center justify-center">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle
-                  cx="48"
-                  cy="48"
-                  r="40"
-                  stroke="#f3f4f6"
-                  strokeWidth="8"
-                  fill="transparent"
-                />
-                <circle
-                  cx="48"
-                  cy="48"
-                  r="40"
-                  stroke="#10b981"
-                  strokeWidth="8"
-                  fill="transparent"
-                  strokeDasharray="251"
-                  strokeDashoffset="60"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute flex flex-col items-center">
-                <span className="text-xs font-bold">₱10.285</span>
-                <span className="text-[10px] text-green-500">+2.4%</span>
-              </div>
-            </div>
-            <div className="text-[11px] space-y-1 flex-1 px-2">
-              <LegendItem color="bg-blue-400" label="Rizal Cement" val="42%" />
-              <LegendItem color="bg-purple-500" label="Zem Coat" val="36%" />
-              <LegendItem color="bg-red-500" label="Davis Paint" val="15%" />
-              <LegendItem color="bg-green-500" label="ABC Sealant" val="5%" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Recent Restock (Supplier) */}
-        <Card title="Recent Restock (Supplier)" btnLabel="See all">
-          <div className="space-y-3 mt-2">
-            <ProgressBar label="A" progress="90%" color="bg-green-700" />
-            <ProgressBar label="B" progress="75%" color="bg-green-600" />
-            <ProgressBar label="C" progress="30%" color="bg-green-900" />
-          </div>
-        </Card>
-
-        {/* Deliveries History */}
-        <Card title="Deliveries History" btnLabel="See all">
-          <div className="text-[12px] space-y-3 mt-2">
-            <HistoryRow
-              date="01 Mar 202403010"
-              status="Cancelled"
-              statusColor="text-red-500"
-            />
-            <HistoryRow
-              date="01 Mar 202403020"
-              status="Completed"
-              statusColor="text-green-500"
-            />
-            <HistoryRow
-              date="01 Mar 202403030"
-              status="Completed"
-              statusColor="text-green-500"
-            />
-            <HistoryRow
-              date="02 Mar 202403040"
-              status="Completed"
-              statusColor="text-green-500"
-            />
-          </div>
-        </Card>
-
-        {/* Inbound vs Outbound */}
-        <Card title="Inbound vs Outbound" btnLabel="See all">
-          <div className="flex justify-center gap-4 text-[10px] mb-2">
-            <span className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-800"></div> Purchase
-            </span>
-            <span className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-500"></div> Sales
-            </span>
-          </div>
-          <div className="h-24 flex items-end justify-around border-l border-b border-gray-200 px-2">
-            <div className="w-4 bg-green-800 h-1/2 rounded-t-sm"></div>
-            <div className="w-4 bg-green-500 h-3/4 rounded-t-sm"></div>
-            <div className="w-4 bg-green-800 h-full rounded-t-sm"></div>
-            <div className="w-4 bg-green-500 h-2/3 rounded-t-sm"></div>
-          </div>
-        </Card>
-
-        {/* Stockout days to sell */}
-        <Card title="Stockout days to sell">
-          <div className="mt-2">
-            <div className="flex items-center gap-2">
-              <span className="text-5xl font-bold text-gray-800">39.98</span>
-              <span className="text-xl text-gray-600">Days</span>
-              <span className="text-2xl text-red-400">⚠️</span>
-            </div>
-            <button className="mt-4 px-4 py-1.5 bg-[#6EB2B2] text-white rounded text-xs">
-              View more
-            </button>
-          </div>
-        </Card>
-
-        {/* Units On Stocks */}
-        <Card title="Units On Stocks" btnLabel="View More"></Card>
-
-        {/* Inventory Turnover Ratio */}
-        <Card title="Inventory Turnover Ratio" btnLabel="View More">
-          <div className="flex flex-col items-center">
-            <div className="relative w-24 h-12 overflow-hidden">
-              <div className="w-24 h-24 border-[10px] border-green-600 rounded-full border-b-transparent"></div>
-            </div>
-            <span className="font-bold text-gray-700">9.13</span>
-          </div>
-        </Card>
-
-        {/* Inventory Health Monitor */}
-        <Card title="Inventory Health Monitor" btnLabel="See all">
-          <div className="mt-1">
-            <p className="text-[10px] text-red-500 font-semibold mb-1">
-              34 rizal cement stocks left (LOW STOCK)
-            </p>
-            <p className="text-sm font-bold">
-              34 <span className="text-gray-400 font-normal">of 500pcs</span>
-            </p>
-            <div className="w-full bg-gray-200 h-3 rounded-full mt-2 overflow-hidden">
-              <div className="bg-green-700 h-full w-[15%]"></div>
-            </div>
-          </div>
-        </Card>
+      {/* KPI GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        <StatCard
+          label="Sales Velocity"
+          value={inventory.reduce((acc, i) => acc + (i.outbound_qty || 0), 0)}
+          icon={<TrendingUp className="text-emerald-600" />}
+          sub="Units / 24h"
+          trend={<ArrowUpRight size={14} className="text-emerald-500" />}
+        />
+        <StatCard
+          label="Stockout Risk"
+          value={stockoutRiskItems.length}
+          icon={<AlertTriangle className="text-rose-600" />}
+          sub="High Urgency SKUs"
+          isAlert={true}
+        />
+        <StatCard
+          label="Procurement"
+          value={inventory.reduce((acc, i) => acc + (i.inbound_qty || 0), 0)}
+          icon={<ShoppingCart className="text-purple-600" />}
+          sub="Daily Receipts"
+        />
+        <StatCard
+          label="Accuracy"
+          value="98.2%"
+          icon={<Target className="text-blue-600" />}
+          sub="System Fidelity"
+        />
       </div>
 
-      <footer className="text-center mt-12 text-gray-400 text-sm">
-        © Synchronized Technologies 2025
-      </footer>
+      {/* CHARTS SECTION */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+          <h3 className="font-black text-slate-800 uppercase text-xs mb-6 flex items-center gap-2">
+            <Activity size={16} /> Demand Velocity & MAD Forecasting
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={velocityData}>
+                <defs>
+                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0d9488" stopOpacity={0.1} />
+                    <stop offset="95%" stopColor="#0d9488" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f1f5f9"
+                />
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: "#94a3b8" }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: "#94a3b8" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "16px",
+                    border: "none",
+                    boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)",
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="upperBound"
+                  stroke="transparent"
+                  fill="#f1f5f9"
+                  name="Safety Buffer"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="sales"
+                  stroke="#0d9488"
+                  strokeWidth={3}
+                  fillOpacity={1}
+                  fill="url(#colorSales)"
+                  name="Actual Sales"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+          <h3 className="font-black text-slate-800 uppercase text-xs mb-6 flex items-center gap-2">
+            <Timer size={16} /> Inventory Ageing
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={ageingData}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f1f5f9"
+                />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: "#94a3b8" }}
+                />
+                <Tooltip cursor={{ fill: "#f8fafc" }} />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* DATA TABLES SECTION */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+        <div className="lg:col-span-2 space-y-4">
+          {/* Legend restored */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-wrap gap-6 items-center shadow-sm">
+            <div className="flex items-center gap-2 border-r border-slate-100 pr-4 text-[10px] font-black uppercase text-slate-400">
+              <Info size={14} /> Class Legend:
+            </div>
+            <LegendItem
+              label="Class A"
+              desc="Critical"
+              color="bg-purple-100 text-purple-700"
+            />
+            <LegendItem
+              label="Class B"
+              desc="Steady"
+              color="bg-blue-100 text-blue-700"
+            />
+            <LegendItem
+              label="Class C"
+              desc="Slow"
+              color="bg-slate-100 text-slate-600"
+            />
+          </div>
+
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 font-black text-slate-800 uppercase text-xs flex items-center gap-2">
+              <BarChart3 size={16} /> Procurement Decision Engine
+            </div>
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                <tr>
+                  <th className="px-6 py-4">Product</th>
+                  <th className="px-6 py-4">Class</th>
+                  <th className="px-6 py-4">MAD</th>
+                  <th className="px-6 py-4 text-right">Buy Signal</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {inventory.slice(0, 6).map((item) => {
+                  const mad = calculateMAD(item.name).toFixed(1);
+                  const { label, color } = getABCAnalytics(item);
+                  const target = Math.ceil(mad * 1.65) + 50;
+                  const buyQty =
+                    item.quantity < target - 20 ? target - item.quantity : 0;
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/50 text-xs">
+                      <td className="px-6 py-4 font-bold text-slate-800 uppercase">
+                        {item.name}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-2 py-1 rounded text-[10px] font-black uppercase ${color}`}
+                        >
+                          {label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-slate-500">
+                        ±{mad}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {buyQty > 0 ? (
+                          <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-black text-[10px] animate-pulse">
+                            REPLENISH: +{buyQty}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-500 font-black text-[10px] uppercase">
+                            Healthy
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Stockout Risk Table */}
+        <div className="bg-white rounded-3xl border border-rose-200 shadow-lg shadow-rose-100 overflow-hidden">
+          <div className="p-6 border-b border-rose-100 bg-rose-50 font-black text-rose-800 uppercase text-xs flex items-center gap-2">
+            <Flame size={16} className="text-rose-600" /> Stockout Monitor
+          </div>
+          <table className="w-full text-left">
+            <thead className="bg-rose-50/50 text-[10px] font-black uppercase text-rose-400">
+              <tr>
+                <th className="px-4 py-4">Item</th>
+                <th className="px-4 py-4">Qty</th>
+                <th className="px-4 py-4 text-right">Runway</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-rose-50">
+              {stockoutRiskItems.map((item) => (
+                <tr key={item.id} className="hover:bg-rose-50/30 text-xs">
+                  <td className="px-4 py-4 font-bold text-slate-800 uppercase truncate max-w-[120px]">
+                    {item.name}
+                  </td>
+                  <td className="px-4 py-4 font-mono font-bold text-rose-600">
+                    {item.quantity}
+                  </td>
+                  <td className="px-4 py-4 text-right">
+                    <span className="bg-rose-600 text-white px-2 py-1 rounded text-[9px] font-black uppercase">
+                      {(item.quantity / (item.outbound_qty || 1)).toFixed(1)}{" "}
+                      Days
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* DEAD STOCK SECTION RESTORED */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="font-black text-slate-800 uppercase text-xs mb-6 flex items-center gap-2">
+          <Package size={16} /> Dead Stock Alerts (90d+ Idle)
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {inventory
+            .filter((i) => i.outbound_qty === 0)
+            .slice(0, 4)
+            .map((item) => (
+              <div
+                key={item.id}
+                className="p-5 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col justify-between"
+              >
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
+                    {item.name}
+                  </p>
+                  <h4 className="text-lg font-black text-slate-800">
+                    {item.quantity}{" "}
+                    <span className="text-[10px] text-slate-400">Units</span>
+                  </h4>
+                </div>
+                <button className="mt-4 flex items-center justify-center gap-2 py-2 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black uppercase hover:bg-rose-100 transition-all">
+                  <Trash2 size={12} /> Trigger Clearance
+                </button>
+              </div>
+            ))}
+        </div>
+      </div>
     </main>
   );
 };
 
-/* Helper Components */
-const Card = ({ title, subtitle, btnLabel, children }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between min-h-[200px]">
-    <div>
-      <div className="flex justify-between items-start">
-        <h3 className="text-lg font-bold text-gray-800 leading-tight">
-          {title}
-        </h3>
-        {btnLabel && (
-          <button className="text-[10px] bg-[#6EB2B2]/20 text-[#4A8B8B] px-3 py-1 rounded-md font-bold hover:bg-[#6EB2B2]/30 transition-colors">
-            {btnLabel}
-          </button>
-        )}
-      </div>
-      {subtitle && <p className="text-[10px] text-gray-400 mt-1">{subtitle}</p>}
-      <div className="mt-4">{children}</div>
-    </div>
-  </div>
-);
-
-const LegendItem = ({ color, label, val }) => (
-  <div className="flex justify-between items-center">
-    <div className="flex items-center gap-1.5">
-      <div className={`w-2 h-2 rounded-full ${color}`}></div>
-      <span className="text-gray-500">{label}</span>
-    </div>
-    <span className="font-bold text-gray-700">{val}</span>
-  </div>
-);
-
-const ProgressBar = ({ label, progress, color }) => (
+const LegendItem = ({ label, desc, color }) => (
   <div className="flex items-center gap-2">
-    <span className="text-xs text-gray-500 w-4">{label}</span>
-    <div className="flex-1 bg-gray-100 h-4 rounded-sm overflow-hidden">
-      <div className={`${color} h-full`} style={{ width: progress }}></div>
-    </div>
+    <span
+      className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${color}`}
+    >
+      {label}
+    </span>
+    <span className="text-[9px] font-bold text-slate-400 uppercase">
+      {desc}
+    </span>
   </div>
 );
 
-const HistoryRow = ({ date, status, statusColor }) => (
-  <div className="flex justify-between border-b border-gray-50 pb-2">
-    <span className="text-gray-600 font-medium">{date}</span>
-    <span className={`${statusColor} font-bold`}>{status}</span>
+const StatCard = ({ label, value, icon, sub, trend, isAlert }) => (
+  <div
+    className={`p-6 rounded-3xl border transition-all ${
+      isAlert
+        ? "bg-rose-50 border-rose-200 shadow-lg shadow-rose-100"
+        : "bg-white border-slate-200 shadow-sm"
+    }`}
+  >
+    <div className="flex justify-between items-start mb-4">
+      <div
+        className={`p-3 rounded-xl ${isAlert ? "bg-rose-100" : "bg-slate-50"}`}
+      >
+        {icon}
+      </div>
+      {trend}
+    </div>
+    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+      {label}
+    </p>
+    <h2
+      className={`text-3xl font-black ${
+        isAlert ? "text-rose-900" : "text-slate-900"
+      }`}
+    >
+      {value}
+    </h2>
+    <p
+      className={`text-[10px] font-bold mt-2 uppercase flex items-center gap-1 ${
+        isAlert ? "text-rose-600" : "text-slate-400"
+      }`}
+    >
+      {isAlert && <Activity size={12} />} {sub}
+    </p>
   </div>
 );
 

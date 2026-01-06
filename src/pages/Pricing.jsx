@@ -80,10 +80,12 @@ const InboundPricing = () => {
 
   return (
     <div className="min-h-screen bg-[#f8fafc] p-8">
-      <h1 className="text-4xl font-black mb-10 uppercase tracking-tight text-black">
+      <h1 className="text-4xl font-black  uppercase tracking-tight text-black">
         Pricing Manager
       </h1>
-
+      <p className="text-slate-500 text-sm mb-10">
+        Manage item prices from supplier and your retail price
+      </p>
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left">
           <thead className="bg-slate-50 border-b border-slate-100">
