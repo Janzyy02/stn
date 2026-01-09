@@ -11,11 +11,12 @@ import {
   XCircle,
   ChevronLeft,
   ChevronRight,
+  PackageCheck,
 } from "lucide-react";
 
 const PurchaseHistory = () => {
-  const [orders, setOrders] = useState([]);
-  const [expandedOrder, setExpandedOrder] = useState(null);
+  const [batches, setBatches] = useState([]);
+  const [expandedBatch, setExpandedBatch] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Filter States
@@ -28,15 +29,28 @@ const PurchaseHistory = () => {
   const itemsPerPage = 10;
 
   useEffect(() => {
-    const fetchOrders = async () => {
-      const { data } = await supabase
-        .from("purchase_orders")
-        .select(`*, purchase_order_items (*)`)
-        .order("created_at", { ascending: false });
-      setOrders(data || []);
+    const fetchBatches = async () => {
+      setLoading(true);
+      // Fetching from inventory_batches and joining with hardware_inventory for item names/SKUs
+      const { data, error } = await supabase
+        .from("inventory_batches")
+        .select(
+          `
+          *,
+          hardware_inventory (
+            name,
+            sku,
+            unit
+          )
+        `
+        )
+        .order("batch_date", { ascending: false });
+
+      if (error) console.error("Error fetching batches:", error);
+      setBatches(data || []);
       setLoading(false);
     };
-    fetchOrders();
+    fetchBatches();
   }, []);
 
   // Reset to page 1 whenever filters change
@@ -45,14 +59,15 @@ const PurchaseHistory = () => {
   }, [searchTerm, startDate, endDate]);
 
   // Filtering Logic
-  const filteredOrders = orders.filter((order) => {
+  const filteredBatches = batches.filter((batch) => {
+    const itemName = batch.hardware_inventory?.name || "";
     const matchesSearch =
-      order.po_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.supplier_name.toLowerCase().includes(searchTerm.toLowerCase());
+      batch.batch_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      itemName.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const orderDate = new Date(order.created_at).toISOString().split("T")[0];
-    const matchesStart = !startDate || orderDate >= startDate;
-    const matchesEnd = !endDate || orderDate <= endDate;
+    const batchDate = new Date(batch.batch_date).toISOString().split("T")[0];
+    const matchesStart = !startDate || batchDate >= startDate;
+    const matchesEnd = !endDate || batchDate <= endDate;
 
     return matchesSearch && matchesStart && matchesEnd;
   });
@@ -60,8 +75,8 @@ const PurchaseHistory = () => {
   // Pagination Logic
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredOrders.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+  const currentItems = filteredBatches.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredBatches.length / itemsPerPage);
 
   const clearFilters = () => {
     setSearchTerm("");
@@ -72,7 +87,7 @@ const PurchaseHistory = () => {
   if (loading)
     return (
       <div className="p-20 flex justify-center">
-        <Loader2 className="animate-spin text-teal-600" size={40} />
+        <Loader2 className="animate-spin text-blue-600" size={40} />
       </div>
     );
 
@@ -93,20 +108,20 @@ const PurchaseHistory = () => {
 
       <div className="max-w-5xl mx-auto">
         <div className="flex justify-between items-end mb-8 print:hidden">
-          <h1 className="text-4xl font-black uppercase flex items-center gap-3">
-            <History size={36} /> Purchase History
+          <h1 className="text-4xl font-black uppercase flex items-center gap-3 italic tracking-tighter">
+            <PackageCheck size={36} className="text-blue-600" /> Inbound History
           </h1>
           <p className="text-slate-400 font-bold text-sm">
-            {filteredOrders.length} records found
+            {filteredBatches.length} batches recorded
           </p>
         </div>
 
         {/* FILTERS SECTION */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 mb-8 shadow-sm print:hidden">
+        <div className="bg-white p-6 rounded-xl border-2 border-black mb-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] print:hidden">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             <div className="md:col-span-5">
               <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 ml-1">
-                Search Records
+                Search Batches or Items
               </label>
               <div className="relative">
                 <Search
@@ -115,8 +130,8 @@ const PurchaseHistory = () => {
                 />
                 <input
                   type="text"
-                  placeholder="PO # or Supplier..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold transition-all"
+                  placeholder="Batch # or Item Name..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border-2 border-slate-100 focus:border-black outline-none font-bold transition-all"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -126,12 +141,12 @@ const PurchaseHistory = () => {
             <div className="md:col-span-7">
               <div className="flex justify-between items-center mb-2 ml-1">
                 <label className="block text-[10px] font-black uppercase text-slate-400">
-                  Date Range
+                  Arrival Date Range
                 </label>
                 {(searchTerm || startDate || endDate) && (
                   <button
                     onClick={clearFilters}
-                    className="flex items-center gap-1 text-[10px] font-black uppercase text-red-500 hover:text-red-700"
+                    className="flex items-center gap-1 text-[10px] font-black uppercase text-red-500"
                   >
                     <XCircle size={12} /> Clear
                   </button>
@@ -140,14 +155,16 @@ const PurchaseHistory = () => {
               <div className="flex items-center gap-3">
                 <input
                   type="date"
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold text-sm"
+                  className="flex-1 px-4 py-2.5 rounded-lg border-2 border-slate-100 font-bold text-sm"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                 />
-                <span className="font-black text-slate-300 text-xs">TO</span>
+                <span className="font-black text-slate-300 text-xs text-center">
+                  TO
+                </span>
                 <input
                   type="date"
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold text-sm"
+                  className="flex-1 px-4 py-2.5 rounded-lg border-2 border-slate-100 font-bold text-sm"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                 />
@@ -156,48 +173,51 @@ const PurchaseHistory = () => {
           </div>
         </div>
 
-        {/* ORDERS LIST */}
+        {/* BATCHES LIST */}
         <div className="space-y-4">
           {currentItems.length > 0 ? (
-            currentItems.map((order) => (
+            currentItems.map((batch) => (
               <div
-                key={order.po_number}
-                className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm print:border-none print:shadow-none"
+                key={batch.id}
+                className="bg-white rounded-xl border-2 border-slate-100 overflow-hidden hover:border-black transition-all print:border-none"
               >
                 <div
                   onClick={() =>
-                    setExpandedOrder(
-                      expandedOrder === order.po_number ? null : order.po_number
+                    setExpandedBatch(
+                      expandedBatch === batch.id ? null : batch.id
                     )
                   }
-                  className="p-6 flex justify-between items-center cursor-pointer hover:bg-slate-50 print:hidden"
+                  className="p-6 flex justify-between items-center cursor-pointer print:hidden"
                 >
                   <div className="flex gap-12">
                     <div>
                       <p className="text-[10px] font-black uppercase text-slate-400">
-                        PO Number
+                        Batch Number
                       </p>
-                      <p className="font-bold text-teal-700">
-                        {order.po_number}
+                      <p className="font-mono font-bold text-blue-600">
+                        {batch.batch_number}
                       </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-black uppercase text-slate-400">
-                        Supplier
+                        Item Name
                       </p>
-                      <p className="font-bold">{order.supplier_name}</p>
+                      <p className="font-bold uppercase text-sm">
+                        {batch.hardware_inventory?.name}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-8">
                     <div className="text-right">
                       <p className="text-[10px] font-black uppercase text-slate-400">
-                        Amount
+                        Received Qty
                       </p>
                       <p className="font-black text-lg">
-                        ₱{order.total_amount.toLocaleString()}
+                        {batch.daily_inbound || batch.current_stock}{" "}
+                        {batch.hardware_inventory?.unit}
                       </p>
                     </div>
-                    {expandedOrder === order.po_number ? (
+                    {expandedBatch === batch.id ? (
                       <ChevronUp />
                     ) : (
                       <ChevronDown />
@@ -205,77 +225,102 @@ const PurchaseHistory = () => {
                   </div>
                 </div>
 
-                {expandedOrder === order.po_number && (
-                  <div className="bg-white p-10 border-t border-slate-100 print:p-0 print-area">
+                {expandedBatch === batch.id && (
+                  <div className="bg-white p-10 border-t-2 border-slate-50 print:p-0 print-area">
                     <div className="flex justify-end mb-6 no-print">
                       <button
                         onClick={() => window.print()}
-                        className="bg-black text-white px-6 py-2 rounded-xl font-black uppercase text-xs hover:bg-slate-800 flex items-center gap-2"
+                        className="bg-black text-white px-6 py-2 rounded-xl font-black uppercase text-xs flex items-center gap-2"
                       >
-                        <Printer size={16} /> Reprint PO
+                        <Printer size={16} /> Print Receipt
                       </button>
                     </div>
-                    <div className="border-4 border-black p-8">
-                      {/* ... (PO Content Header) */}
+                    <div className="border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
                       <div className="flex justify-between items-start border-b-4 border-black pb-8 mb-8">
                         <div>
-                          <h1 className="text-5xl font-black uppercase tracking-tighter">
-                            Purchase Order
+                          <h1 className="text-4xl font-black uppercase italic tracking-tighter">
+                            Receiving Report
                           </h1>
-                          <p className="text-slate-500 font-bold mt-1">
-                            {order.po_number}
+                          <p className="text-blue-600 font-mono font-bold mt-1">
+                            Batch ID: {batch.batch_number}
                           </p>
                         </div>
                         <div className="text-right">
                           <p className="font-black uppercase text-[10px] text-slate-400">
-                            Date Issued
+                            Received Date
                           </p>
                           <p className="font-bold">
-                            {new Date(order.created_at).toLocaleDateString()}
+                            {new Date(batch.batch_date).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
-                      {/* ... (PO Content Table) */}
+
+                      <div className="grid grid-cols-2 gap-8 mb-12">
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-slate-400 mb-1">
+                            Product Details
+                          </p>
+                          <p className="text-xl font-black uppercase">
+                            {batch.hardware_inventory?.name}
+                          </p>
+                          <p className="text-sm font-bold text-slate-500 italic">
+                            SKU: {batch.hardware_inventory?.sku}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black uppercase text-slate-400 mb-1">
+                            Cost Summary
+                          </p>
+                          <p className="text-xl font-black">
+                            ₱{batch.unit_cost?.toLocaleString()}{" "}
+                            <span className="text-xs text-slate-400">
+                              / {batch.hardware_inventory?.unit}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+
                       <table className="w-full mb-12">
                         <thead>
                           <tr className="border-b-2 border-black text-[10px] uppercase font-black text-slate-400">
-                            <th className="py-3 text-left">Description</th>
-                            <th className="py-3 text-center">Qty</th>
-                            <th className="py-3 text-right">Unit Price</th>
-                            <th className="py-3 text-right">Amount</th>
+                            <th className="py-3 text-left">Classification</th>
+                            <th className="py-3 text-center">Batch Status</th>
+                            <th className="py-3 text-right">Inbound Qty</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {order.purchase_order_items.map((item) => (
-                            <tr key={item.id}>
-                              <td className="py-4">
-                                <p className="font-black uppercase text-sm">
-                                  {item.item_name}
-                                </p>
-                                <p className="text-[10px] font-mono text-slate-400">
-                                  {item.sku}
-                                </p>
-                              </td>
-                              <td className="py-4 text-center font-bold">
-                                {item.quantity}
-                              </td>
-                              <td className="py-4 text-right">
-                                ₱{item.price_per_unit.toLocaleString()}
-                              </td>
-                              <td className="py-4 text-right font-black">
-                                ₱{item.total_price.toLocaleString()}
-                              </td>
-                            </tr>
-                          ))}
+                        <tbody>
+                          <tr>
+                            <td className="py-6 font-bold text-sm">
+                              Inventory Stock Arrival
+                            </td>
+                            <td className="py-6 text-center">
+                              <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-black uppercase">
+                                Active
+                              </span>
+                            </td>
+                            <td className="py-6 text-right font-black text-xl">
+                              {batch.daily_inbound || batch.current_stock}{" "}
+                              {batch.hardware_inventory?.unit}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
-                      <div className="flex justify-end border-t-4 border-black pt-6">
+
+                      <div className="flex justify-between items-end border-t-4 border-black pt-6">
+                        <div className="text-[10px] font-bold text-slate-400 italic">
+                          * This batch has been automatically registered into
+                          master inventory records.
+                        </div>
                         <div className="text-right">
                           <p className="text-[10px] font-black text-slate-400 uppercase">
-                            Total Amount Due
+                            Batch Total Cost Value
                           </p>
-                          <p className="text-5xl font-black">
-                            ₱{order.total_amount.toLocaleString()}
+                          <p className="text-4xl font-black italic">
+                            ₱
+                            {(
+                              (batch.unit_cost || 0) *
+                              (batch.daily_inbound || batch.current_stock)
+                            ).toLocaleString()}
                           </p>
                         </div>
                       </div>
@@ -285,21 +330,21 @@ const PurchaseHistory = () => {
               </div>
             ))
           ) : (
-            <div className="bg-white p-16 text-center rounded-xl border-2 border-dashed border-slate-200">
+            <div className="bg-white p-16 text-center rounded-xl border-4 border-dashed border-slate-200">
               <p className="text-slate-400 font-black uppercase text-sm tracking-widest">
-                No orders found
+                No Batch History Found
               </p>
             </div>
           )}
         </div>
 
-        {/* PAGINATION CONTROLS - Hidden on Print */}
+        {/* PAGINATION CONTROLS */}
         {totalPages > 1 && (
           <div className="mt-10 flex justify-center items-center gap-2 print:hidden">
             <button
               onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
-              className="p-2 rounded-lg border bg-white disabled:opacity-30 hover:bg-slate-50 transition-colors"
+              className="p-2 rounded-lg border-2 bg-white disabled:opacity-30 hover:border-black transition-colors"
             >
               <ChevronLeft size={20} />
             </button>
@@ -311,7 +356,7 @@ const PurchaseHistory = () => {
                 className={`w-10 h-10 rounded-lg font-black text-xs transition-all ${
                   currentPage === idx + 1
                     ? "bg-black text-white shadow-lg"
-                    : "bg-white border text-slate-400 hover:border-black hover:text-black"
+                    : "bg-white border-2 text-slate-400 hover:border-black hover:text-black"
                 }`}
               >
                 {idx + 1}
@@ -323,7 +368,7 @@ const PurchaseHistory = () => {
                 setCurrentPage((prev) => Math.min(prev + 1, totalPages))
               }
               disabled={currentPage === totalPages}
-              className="p-2 rounded-lg border bg-white disabled:opacity-30 hover:bg-slate-50 transition-colors"
+              className="p-2 rounded-lg border-2 bg-white disabled:opacity-30 hover:border-black transition-colors"
             >
               <ChevronRight size={20} />
             </button>
