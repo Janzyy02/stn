@@ -14,6 +14,7 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
   const [batches, setBatches] = useState([]);
   const [archiveItems, setArchiveItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [expandedNames, setExpandedNames] = useState({});
   const [currentTime, setCurrentTime] = useState(
     new Date().toLocaleTimeString()
@@ -30,21 +31,53 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
   }, []);
 
   const fetchInventory = async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from("inventory_batches")
-      .select(`*, hardware_inventory (*)`)
-      .order("batch_date", { ascending: false });
-    setBatches(data || []);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("inventory_batches")
+        .select(
+          `
+          *,
+          hardware_inventory (
+            name, 
+            sku, 
+            inbound_qty, 
+            outbound_qty, 
+            stock_balance, 
+            category, 
+            unit
+          )
+        `
+        )
+        .order("batch_date", { ascending: false });
+
+      if (error) throw error;
+      setBatches(data || []);
+
+      const initialExpanded = {};
+      data?.forEach((b) => {
+        if (b.hardware_inventory)
+          initialExpanded[b.hardware_inventory.name] = true;
+      });
+      setExpandedNames(initialExpanded);
+    } catch (err) {
+      console.error("Error fetching batches:", err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchArchive = async () => {
-    const { data } = await supabase
-      .from("daily_ledger_history")
-      .select("*")
-      .order("snapshot_date", { ascending: false });
-    setArchiveItems(data || []);
+    try {
+      const { data, error } = await supabase
+        .from("daily_ledger_history")
+        .select("*")
+        .order("snapshot_date", { ascending: false });
+      if (error) throw error;
+      setArchiveItems(data || []);
+    } catch (err) {
+      console.error("Archive Error:", err.message);
+    }
   };
 
   const groupedByName = batches.reduce((acc, batch) => {
@@ -54,39 +87,117 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
     return acc;
   }, {});
 
+  const handleEndDay = async () => {
+    if (
+      !window.confirm(
+        "End Business Day? This locks today's balances and resets tallies."
+      )
+    )
+      return;
+    try {
+      setIsProcessing(true);
+      const today = new Date().toISOString().split("T")[0];
+      const products = Object.values(groupedByName).map(
+        (group) => group[0].hardware_inventory
+      );
+
+      const historyData = products.map((prod) => ({
+        name: prod.name,
+        initial_qty:
+          (prod.stock_balance || 0) -
+          (prod.inbound_qty || 0) +
+          (prod.outbound_qty || 0),
+        inbound_qty: prod.inbound_qty || 0,
+        outbound_qty: prod.outbound_qty || 0,
+        final_balance: prod.stock_balance || 0,
+        snapshot_date: today,
+        po_number: prod.sku,
+      }));
+
+      await supabase.from("daily_ledger_history").insert(historyData);
+      await supabase
+        .from("hardware_inventory")
+        .update({ inbound_qty: 0, outbound_qty: 0 })
+        .gt("stock_balance", -1000000);
+
+      fetchInventory();
+      fetchArchive();
+      alert("Business day closed successfully.");
+    } catch (err) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="animate-spin text-blue-600" size={40} />
+      </div>
+    );
+
   return (
-    <div className="p-8 w-full bg-slate-50 min-h-screen font-sans">
-      <div className="flex justify-between items-end mb-8">
-        <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-          <Database className="text-blue-600" /> INVENTORY
-        </h1>
-        <div className="text-right font-mono font-bold text-lg">
-          <Clock size={18} className="inline mr-2 text-blue-500" />{" "}
-          {currentTime}
+    <div className="p-8 w-full bg-slate-50 min-h-screen font-sans text-slate-900">
+      {/* HEADER SECTION */}
+      <div className="flex justify-between items-end mb-10 no-print">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+            <Database className="text-blue-600" size={32} /> INVENTORY
+            MANAGEMENT
+          </h1>
+          <p className="text-slate-600 font-bold text-xs uppercase tracking-[0.2em] mt-2">
+            Verified System Master | Hardware Logistics
+          </p>
+        </div>
+        <div className="flex items-center gap-8">
+          <div className="text-right border-r-2 pr-8 border-slate-200">
+            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest block mb-1">
+              Station Time
+            </span>
+            <div className="flex items-center gap-2 text-slate-900 font-mono font-bold text-2xl">
+              <Clock size={22} className="text-blue-600" /> {currentTime}
+            </div>
+          </div>
+          <button
+            onClick={handleEndDay}
+            disabled={isProcessing}
+            className="bg-slate-900 text-white px-8 py-4 rounded-2xl text-xs font-black uppercase hover:bg-black transition-all shadow-xl active:scale-95 flex items-center gap-2"
+          >
+            {isProcessing ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              "End Business Day"
+            )}
+          </button>
         </div>
       </div>
 
-      {/* DAILY MOVEMENT LEDGER */}
-      <div className="mb-12">
-        <h2 className="text-lg font-black mb-4 uppercase flex items-center gap-2">
-          <ArrowDownUp className="text-blue-600" size={20} /> Daily Ledger
+      {/* 1. DAILY MOVEMENT LEDGER */}
+      <div className="mb-14">
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-2 mb-5">
+          <ArrowDownUp className="text-blue-600" size={24} /> Daily Movement
+          Ledger
         </h2>
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-[2rem] border-2 border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-slate-800 text-slate-300 text-[10px] uppercase font-black">
-              <tr>
-                <th className="px-6 py-4">Item Details</th>
-                <th className="px-6 py-4 text-center">Opening</th>
-                <th className="px-6 py-4 text-blue-400 text-center">In (+)</th>
-                <th className="px-6 py-4 text-orange-400 text-center">
-                  Out (-)
+            <thead>
+              <tr className="bg-slate-900 text-white text-[10px] uppercase font-black tracking-[0.15em]">
+                <th className="px-8 py-6">Item Details</th>
+                <th className="px-8 py-6">Category</th>
+                <th className="px-8 py-6 text-center">Opening</th>
+                <th className="px-8 py-6 text-blue-400 text-center">
+                  Inbound (+)
                 </th>
-                <th className="px-6 py-4 bg-slate-700 text-teal-400 text-center">
-                  Live Stock
+                <th className="px-8 py-6 text-orange-400 text-center">
+                  Outbound (-)
+                </th>
+                <th className="px-8 py-6 bg-slate-800 text-teal-400 text-center border-l border-slate-700">
+                  Live Balance
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y-2 divide-slate-50">
               {Object.entries(groupedByName).map(([name, itemBatches]) => {
                 const master = itemBatches[0].hardware_inventory;
                 const opening =
@@ -94,21 +205,37 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
                   (master.inbound_qty || 0) +
                   (master.outbound_qty || 0);
                 return (
-                  <tr key={name}>
-                    <td className="px-6 py-4 text-black font-bold uppercase text-sm">
-                      {name}
+                  <tr
+                    key={name}
+                    className="hover:bg-blue-50/40 transition-colors"
+                  >
+                    <td className="px-8 py-6">
+                      <span className="font-black uppercase text-base text-slate-900 block leading-tight">
+                        {name}
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-500 font-bold">
+                        SKU: {master.sku}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 text-black font-black text-center">
+                    <td className="px-8 py-6">
+                      <span className="text-[10px] font-black uppercase bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700 border border-slate-200">
+                        {master.category || "N/A"}
+                      </span>
+                    </td>
+                    <td className="px-8 py-6 text-center font-bold text-slate-600">
                       {opening}
                     </td>
-                    <td className="px-6 py-4 text-center text-blue-600 font-black">
+                    <td className="px-8 py-6 text-center font-black text-blue-700 text-lg">
                       +{master.inbound_qty || 0}
                     </td>
-                    <td className="px-6 py-4 text-center text-orange-600 font-black">
+                    <td className="px-8 py-6 text-center font-black text-orange-700 text-lg">
                       -{master.outbound_qty || 0}
                     </td>
-                    <td className="px-6 py-4 text-center font-black bg-teal-50 text-teal-700">
-                      {master.stock_balance}
+                    <td className="px-8 py-6 text-center font-black bg-teal-50/50 border-l border-slate-100 text-teal-900 text-xl">
+                      {master.stock_balance || 0}{" "}
+                      <span className="text-[10px] font-bold text-teal-600 ml-1">
+                        {master.unit}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -118,22 +245,23 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
         </div>
       </div>
 
-      {/* MASTER RECORDS (BATCHES) */}
-      <div className="mb-12">
-        <h2 className="text-lg font-black mb-4 uppercase flex items-center gap-2">
-          <Package className="text-blue-600" size={20} /> Master Batches
+      {/* 2. MASTER RECORDS (BATCHES) */}
+      <div className="mb-14">
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-2 mb-5">
+          <Package className="text-blue-600" size={24} /> Master Batch Records
         </h2>
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-[2rem] border-2 border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-slate-100 text-slate-500 text-[10px] uppercase font-black">
-              <tr>
-                <th className="px-6 py-4 w-12 text-center">#</th>
-                <th className="px-6 py-4">Batch Reference</th>
-                <th className="px-6 py-4 text-center">Stock</th>
-                <th className="px-6 py-4 text-right">Action</th>
+            <thead>
+              <tr className="bg-slate-100 text-slate-700 text-[10px] uppercase font-black border-b-2 border-slate-200">
+                <th className="px-8 py-6 w-20 text-center">Status</th>
+                <th className="px-8 py-6">Batch Reference</th>
+                <th className="px-8 py-6 text-center">Receipt Date</th>
+                <th className="px-8 py-6 text-center">Remaining</th>
+                <th className="px-8 py-6 text-right pr-12">Action</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y-2 divide-slate-50">
               {Object.entries(groupedByName).map(([itemName, itemBatches]) => (
                 <React.Fragment key={itemName}>
                   <tr
@@ -145,38 +273,69 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
                       }))
                     }
                   >
-                    <td className="px-6 py-3 text-black text-center">
+                    <td className="px-8 py-5 text-center">
                       <ChevronDown
-                        size={16}
-                        className={expandedNames[itemName] ? "" : "-rotate-90"}
+                        size={22}
+                        className={`transition-transform duration-300 ${
+                          expandedNames[itemName]
+                            ? "text-blue-600"
+                            : "text-slate-400 -rotate-90"
+                        }`}
                       />
                     </td>
                     <td
-                      colSpan="3"
-                      className="px-6 py-3 text-black font-black text-sm uppercase italic"
+                      colSpan="4"
+                      className="px-8 py-5 font-black text-lg uppercase italic text-slate-900"
                     >
                       {itemName}
+                      <span className="ml-4 text-[10px] bg-blue-600 text-white px-3 py-1 rounded-full not-italic font-black tracking-widest">
+                        {itemBatches[0].hardware_inventory.category}
+                      </span>
                     </td>
                   </tr>
                   {expandedNames[itemName] &&
                     itemBatches.map((batch) => (
-                      <tr key={batch.id} className="text-xs">
-                        <td className="px-6 py-4"></td>
-                        <td className="px-6 py-4 text-black font-mono font-bold">
+                      <tr
+                        key={batch.id}
+                        className="text-xs hover:bg-blue-50/50 transition-colors"
+                      >
+                        <td className="px-8 py-6 text-center">
+                          <div
+                            className={`w-3 h-3 rounded-full mx-auto ${
+                              batch.current_stock > 0
+                                ? "bg-emerald-500"
+                                : "bg-slate-300"
+                            }`}
+                          ></div>
+                        </td>
+                        <td className="px-8 py-6 font-mono font-black text-slate-800 text-base">
                           {batch.batch_number}
                         </td>
-                        <td className="px-6 py-4 text-black text-center font-black">
-                          {batch.current_stock}
+                        <td className="px-8 py-6 text-center font-bold text-slate-700 text-sm">
+                          {new Date(batch.batch_date).toLocaleDateString(
+                            undefined,
+                            { year: "numeric", month: "short", day: "numeric" }
+                          )}
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-8 py-6 text-emerald-800 text-center font-black text-lg">
+                          {batch.current_stock}{" "}
+                          <span className="text-[11px] uppercase text-emerald-600 font-bold">
+                            {itemBatches[0].hardware_inventory.unit}
+                          </span>
+                        </td>
+                        <td className="px-8 py-6 text-right pr-12">
                           <button
                             onClick={() => {
-                              setSelectedPO(batch.batch_number);
+                              setSelectedPO({
+                                number: batch.batch_number,
+                                date: batch.batch_date,
+                                name: itemName,
+                              });
                               setCurrentPage("Item Action");
                             }}
-                            className="text-blue-600 font-black text-[10px] flex items-center gap-1 ml-auto"
+                            className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-[11px] uppercase flex items-center gap-2 ml-auto hover:bg-slate-900 transition-all active:scale-95 shadow-lg shadow-blue-100"
                           >
-                            QR <ArrowRight size={14} />
+                            QR SYSTEM <ArrowRight size={16} />
                           </button>
                         </td>
                       </tr>
@@ -188,44 +347,72 @@ const Inventory = ({ setCurrentPage, setSelectedPO }) => {
         </div>
       </div>
 
-      {/* LEDGER HISTORY SECTION */}
-      <div>
-        <h2 className="text-lg font-black mb-4 uppercase flex items-center gap-2">
-          <Clock size={20} className="text-slate-400" /> Ledger History
+      {/* 3. LEDGER HISTORY (ARCHIVE) */}
+      <div className="no-print">
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-5 flex items-center gap-2">
+          <Clock size={24} className="text-slate-400" /> Ledger History (EOD
+          Snapshots)
         </h2>
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-[2rem] border-2 border-slate-200 shadow-sm overflow-hidden">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 text-[10px] uppercase font-black text-slate-400 border-b">
-              <tr>
-                <th className="px-6 py-4">Snapshot Date</th>
-                <th className="px-6 py-4">Item Name</th>
-                <th className="px-6 py-4 text-center text-blue-500">Inbound</th>
-                <th className="px-6 py-4 text-center text-orange-500">
-                  Outbound
+            <thead>
+              <tr className="bg-slate-50 text-[10px] uppercase font-black text-slate-500 border-b-2 border-slate-100">
+                <th className="px-8 py-6 tracking-[0.1em]">Snapshot Date</th>
+                <th className="px-8 py-6 tracking-[0.1em]">Item Description</th>
+                <th className="px-8 py-6 text-center tracking-[0.1em]">
+                  Initial
                 </th>
-                <th className="px-6 py-4 text-right">Final Balance</th>
+                <th className="px-8 py-6 text-center text-blue-600 tracking-[0.1em]">
+                  Daily In
+                </th>
+                <th className="px-8 py-6 text-center text-orange-600 tracking-[0.1em]">
+                  Daily Out
+                </th>
+                <th className="px-8 py-6 text-right pr-12 tracking-[0.1em]">
+                  Closing Balance
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
-              {archiveItems.map((record) => (
-                <tr key={record.id} className="text-xs">
-                  <td className="px-6 py-3 text-black font-mono">
-                    {new Date(record.snapshot_date).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-3 text-black font-bold uppercase">
-                    {record.name}
-                  </td>
-                  <td className="px-6 py-3 text-center text-blue-600 font-black">
-                    +{record.inbound_qty}
-                  </td>
-                  <td className="px-6 py-3 text-center text-orange-600 font-black">
-                    -{record.outbound_qty}
-                  </td>
-                  <td className="px-6 py-3 text-black text-right font-black">
-                    {record.final_balance}
+            <tbody className="divide-y-2 divide-slate-50">
+              {archiveItems.length > 0 ? (
+                archiveItems.map((record) => (
+                  <tr
+                    key={record.id}
+                    className="text-xs hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="px-8 py-5 font-mono font-bold text-slate-500">
+                      {new Date(record.snapshot_date).toLocaleDateString(
+                        undefined,
+                        { year: "numeric", month: "short", day: "numeric" }
+                      )}
+                    </td>
+                    <td className="px-8 py-5 font-black text-slate-900 uppercase text-sm">
+                      {record.name}
+                    </td>
+                    <td className="px-8 py-5 text-center text-slate-400 font-bold">
+                      {record.initial_qty}
+                    </td>
+                    <td className="px-8 py-5 text-center text-blue-800 font-black text-base">
+                      +{record.inbound_qty}
+                    </td>
+                    <td className="px-8 py-5 text-center text-orange-800 font-black text-base">
+                      -{record.outbound_qty}
+                    </td>
+                    <td className="px-8 py-5 text-right pr-12 font-black text-slate-900 bg-slate-50/50 text-lg">
+                      {record.final_balance}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan="6"
+                    className="px-8 py-16 text-center text-slate-400 font-bold uppercase text-[11px] tracking-[0.3em]"
+                  >
+                    No historical logs available for this station
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
