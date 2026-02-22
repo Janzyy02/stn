@@ -49,8 +49,6 @@ const RecordSales = () => {
       if (error) throw error;
 
       const formattedData = (data || []).map((item) => {
-        // Verification: Link batches via hardware_inventory.id = inventory_batches.product_id
-        // Filter by current_stock > 0
         const availableBatches = (item.inventory_batches || [])
           .filter((b) => b.current_stock > 0)
           .sort(
@@ -64,7 +62,6 @@ const RecordSales = () => {
             item.product_pricing?.manual_retail_price || 0,
           ),
           batches: availableBatches,
-          // Set initial selected batch
           selectedBatchId:
             availableBatches.length > 0 ? availableBatches[0].id : null,
         };
@@ -146,6 +143,7 @@ const RecordSales = () => {
         0,
       );
 
+      // 1. Create the Transaction Record
       const { data: txData, error: txErr } = await supabase
         .from("sales_transactions")
         .insert([
@@ -153,7 +151,7 @@ const RecordSales = () => {
             so_number: soNum,
             customer_name: customerName,
             total_amount: totalAmount,
-            status: "Completed",
+            status: "Pending",
           },
         ])
         .select()
@@ -161,10 +159,11 @@ const RecordSales = () => {
 
       if (txErr) throw txErr;
 
+      // 2. Prepare Item Rows
+      // FIXED: Removed 'id: item.activeBatch.id' so the DB generates a unique UUID
       const itemRows = cart.map((item) => ({
         transaction_id: txData.id,
         product_id: item.id,
-        id: item.activeBatch.id,
         item_name: `${item.name} (${item.activeBatch.batch_number})`,
         quantity: item.quantity,
         unit_price: item.displayPrice,
@@ -173,7 +172,20 @@ const RecordSales = () => {
       const { error: itemsErr } = await supabase
         .from("sales_items")
         .insert(itemRows);
+
       if (itemsErr) throw itemsErr;
+
+      // 3. Deduct Stock from Batches
+      for (const item of cart) {
+        const { error: stockErr } = await supabase
+          .from("inventory_batches")
+          .update({
+            current_stock: item.activeBatch.current_stock - item.quantity,
+          })
+          .eq("id", item.activeBatch.id);
+
+        if (stockErr) console.error("Stock update error:", stockErr);
+      }
 
       setLastOrder({
         soNum,
@@ -281,7 +293,6 @@ const RecordSales = () => {
                         Per {item.unit || "unit"}
                       </p>
 
-                      {/* TAILWIND STYLED DROPDOWN */}
                       {!isOutOfStock && (
                         <div className="mt-4 group">
                           <label className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-1 mb-1.5 ml-1">

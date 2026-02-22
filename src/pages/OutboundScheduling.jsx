@@ -48,18 +48,22 @@ const OutboundScheduling = () => {
   };
 
   const handleSave = async (id) => {
+    console.log("--- Starting Outbound Save Process ---");
     try {
+      // 1. Fetch current database state
       const { data: order, error: fetchErr } = await supabase
         .from("sales_transactions")
         .select("*, sales_items(*)")
         .eq("id", id)
         .single();
 
-      if (fetchErr) throw fetchErr;
+      if (fetchErr) throw new Error("Fetch Order Error: " + fetchErr.message);
 
+      // Check if status is transitioning TO "Completed"
       const isBecomingCompleted =
         editData.status === "Completed" && order.status !== "Completed";
 
+      // 2. Update the main sales transaction record
       const { error: statusUpdateErr } = await supabase
         .from("sales_transactions")
         .update({
@@ -68,17 +72,29 @@ const OutboundScheduling = () => {
         })
         .eq("id", id);
 
-      if (statusUpdateErr) throw statusUpdateErr;
+      if (statusUpdateErr)
+        throw new Error("Status Update Error: " + statusUpdateErr.message);
 
+      // 3. IF COMPLETED: Process Inventory and Ledger updates
       if (isBecomingCompleted) {
+        console.log("Status is Completed. Processing Inventory & Ledger...");
+
         for (const item of order.sales_items) {
-          const { data: inv } = await supabase
+          // A. Fetch current hardware inventory
+          const { data: inv, error: invFetchErr } = await supabase
             .from("hardware_inventory")
-            .select("stock_balance, outbound_qty")
+            .select("stock_balance, outbound_qty, name")
             .eq("id", item.product_id)
             .single();
 
-          await supabase
+          if (invFetchErr)
+            throw new Error(
+              `Inventory Fetch Error for ${item.item_name}: ` +
+                invFetchErr.message,
+            );
+
+          // B. Update hardware_inventory: Increment outbound_qty and Decrement stock_balance
+          const { error: invUpdateErr } = await supabase
             .from("hardware_inventory")
             .update({
               stock_balance:
@@ -88,18 +104,38 @@ const OutboundScheduling = () => {
             })
             .eq("id", item.product_id);
 
-          await supabase.from("ledger").insert([
+          if (invUpdateErr)
+            throw new Error(
+              `Inventory Update Error for ${item.item_name}: ` +
+                invUpdateErr.message,
+            );
+
+          // C. Insert into Ledger Table and Log Result
+          const { error: ledgerErr } = await supabase.from("ledger").insert([
             {
               transaction_type: "OUTBOUND",
               reference_number: order.so_number,
               product_id: item.product_id,
               item_name: item.item_name,
-              quantity: item.quantity,
-              amount: Number(item.quantity) * Number(item.unit_price),
+              quantity: Number(item.quantity),
+              amount: Number(item.quantity) * Number(item.unit_price || 0),
               timestamp: new Date().toISOString(),
             },
           ]);
+
+          if (ledgerErr) {
+            console.error(
+              `❌ LEDGER ERROR for ${item.item_name}:`,
+              ledgerErr.message,
+            );
+            throw new Error(`Ledger Recording Error: ` + ledgerErr.message);
+          } else {
+            console.log(
+              `✅ LEDGER RECORDED: ${item.item_name} (Qty: ${item.quantity}) for Order ${order.so_number}`,
+            );
+          }
         }
+
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);
       }
@@ -107,7 +143,8 @@ const OutboundScheduling = () => {
       setEditingId(null);
       fetchTransactions();
     } catch (err) {
-      alert("System Error: " + err.message);
+      console.error("CRITICAL ERROR:", err.message);
+      alert("SYSTEM ERROR: " + err.message);
     }
   };
 
@@ -124,7 +161,7 @@ const OutboundScheduling = () => {
     <div className="p-8 bg-[#f3f4f6] min-h-screen relative font-sans text-black">
       {showSuccess && (
         <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[100] bg-black text-white px-8 py-4 rounded-xl font-black shadow-[8px_8px_0px_0px_rgba(34,197,94,1)] flex items-center gap-2 border-2 border-white animate-bounce">
-          <CheckCircle2 className="text-emerald-400" /> STOCK & LEDGER UPDATED
+          <CheckCircle2 className="text-emerald-400" /> MOVEMENT LOGGED
         </div>
       )}
 
@@ -245,7 +282,7 @@ const OutboundScheduling = () => {
                     {editingId === tx.id ? (
                       <input
                         type="date"
-                        className="border-4 border-black rounded-lg p-2 text-sm font-black uppercase"
+                        className="border-4 border-black rounded-lg p-2 text-sm font-black uppercase w-full"
                         value={editData.delivery_date}
                         onChange={(e) =>
                           setEditData({
@@ -280,8 +317,8 @@ const OutboundScheduling = () => {
                           tx.status === "Completed"
                             ? "bg-emerald-400 text-black border-black"
                             : tx.status === "In Transit"
-                            ? "bg-blue-400 text-black border-black"
-                            : "bg-white text-black border-black"
+                              ? "bg-blue-400 text-black border-black"
+                              : "bg-white text-black border-black"
                         }`}
                       >
                         {tx.status}
