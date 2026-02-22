@@ -1,0 +1,20 @@
+/* Replace the top section of your App.css with this */
+#root {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left; /* Changed from center to align your text properly */
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: flex-start;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+/* Ensure the layout container spans full width */
+.flex.min-h-screen {
+  width: 100vw;
+}
